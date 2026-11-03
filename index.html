@@ -456,10 +456,27 @@ function logError(where, err) {
 
 window.addEventListener("unhandledrejection", (e) => {
   logError("未捕获的异步错误", e.reason);
+  fatal(e.reason && (e.reason.message || e.reason));
 });
 window.addEventListener("error", (e) => {
   logError("脚本错误", e.message);
+  fatal(e.message);
 });
+
+/** 顶部致命错误横幅：页面崩溃时立刻可见 */
+function fatal(msg) {
+  try {
+    let el = document.getElementById("fatalBox");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "fatalBox";
+      el.style.cssText =
+        "position:fixed;left:8px;right:8px;top:8px;z-index:99;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:10px;border-radius:12px;font-size:13px;white-space:pre-wrap;box-shadow:0 8px 24px rgba(0,0,0,.15)";
+      document.body.appendChild(el);
+    }
+    el.textContent = "页面出错：" + msg;
+  } catch {}
+}
 
 /* 如果 ethers 没加载（例如上传时丢了 vendor 目录），给出明确提示，而不是只报错。 */
 if (typeof ethers === "undefined") {
@@ -2239,4 +2256,23 @@ $("btnCopy").onclick = async () => {
   }
 };
 
-$("multisig").value = localStorage.getItem("
+$("multisig").value = localStorage.getItem("anubis.multisig") || "";
+
+// 支持 ?ms=0x... 直接打开某个多签（方便分享链接与截图核对）
+try {
+  const deep = new URLSearchParams(location.search).get("ms");
+  if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
+} catch {}
+
+renderHelix();
+if ($("multisig").value) load();
+
+if (window.ethereum) {
+  window.ethereum.on?.("accountsChanged", () => location.reload());
+  window.ethereum.on?.("chainChanged", () => location.reload());
+}
+
+
+</script>
+</body>
+</html>
