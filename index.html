@@ -116,6 +116,8 @@
 
   .tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:#EF4444;color:#fff;font-size:11px;font-weight:800}
   .tab-count[hidden]{display:none}
+  .link-danger{width:100%;margin-top:10px;padding:10px;background:none;box-shadow:none;color:#DC2626;font-size:13px;font-weight:700}
+  .link-danger:disabled{color:#9CA3AF}
   button:focus-visible,.tab:focus-visible,summary:focus-visible{outline:3px solid rgba(124,58,237,.35);outline-offset:2px}
   .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(23,21,40,.45);backdrop-filter:blur(4px);overscroll-behavior:contain}
   .modal[hidden]{display:none}
@@ -471,6 +473,7 @@
       <div class="row" style="margin-top:10px">
         <button class="ok grow" id="sfMain" disabled>执行</button>
       </div>
+      <button class="link-danger" id="sfCancelTx" disabled>取消这笔交易</button>
 
       <details class="adv">
         <summary>分享链接</summary>
@@ -505,6 +508,20 @@
     <div class="row" style="gap:8px">
       <button class="ghost grow" id="approveLater">稍后</button>
       <button class="grow" id="approveGo">去批准</button>
+    </div>
+  </div>
+</div>
+
+<div id="cancelModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cancelTitle" hidden>
+  <div class="modal-card">
+    <h2 id="cancelTitle">取消这笔交易？</h2>
+    <p class="small">
+      Safe 合约不支持撤销单个已上链的批准。取消方式是生成一笔相同 nonce 的空交易，
+      由所有者链上批准并执行，让原交易永久失效。
+    </p>
+    <div class="row" style="gap:8px">
+      <button class="ghost grow" id="cancelBack">返回</button>
+      <button class="danger grow" id="cancelConfirm">生成取消交易</button>
     </div>
   </div>
 </div>
@@ -556,7 +573,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v21 · 2026-11-04 07:25";
+const BUILD = "v22 · 2026-11-04 07:35";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2031,6 +2048,7 @@ const API_BASE =
     : "https://anubis-safe-relay.2903739379.workers.dev";
 let pendingLabel = "";
 let pendingItems = [];
+let cancelTargetHash = null;
 
 async function detectKind(addr, rp) {
   const code = await rp.getCode(addr).catch(() => "0x");
@@ -2181,6 +2199,7 @@ async function loadSafeData(rp, restoreDraft = false) {
     safeApprovedCount = 0;
     safeMyApproved = false;
     $("sfChainApprove").disabled = true;
+    cancelTargetHash = null;
     updateSafeMainButton();
 
     // 覆盖上方「多签地址」卡片里可能残留的上一个合约信息
@@ -2244,6 +2263,7 @@ async function safeComputeHash(autoApprove) {
       JSON.stringify({ to: safeTx.to, value: valueText, data })
     );
     $("sfChainApprove").disabled = false;
+    if ($("sfCancelTx")) $("sfCancelTx").disabled = false;
     updateSafeShareLink();
     const label = pendingLabel || "Safe 交易";
     pendingLabel = "";
@@ -2450,6 +2470,7 @@ async function safeApproveOnChain() {
 function updateSafeMainButton() {
   const btn = $("sfMain");
   if (!btn) return;
+  if ($("sfCancelTx")) $("sfCancelTx").disabled = !safeTx;
   if (!safeTx) {
     btn.disabled = true;
     btn.textContent = "等待计算…";
@@ -2511,6 +2532,10 @@ async function safeExec() {
     await tx.wait();
     storageSet("anubis.safeDraft", "");
     await removePendingItem(executedHash);
+    if (cancelTargetHash) {
+      await removePendingItem(cancelTargetHash);
+      cancelTargetHash = null;
+    }
     toast("已执行");
     await load();
     showView("tx");
@@ -2612,6 +2637,69 @@ $("approveModal").addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") hideApproveModal();
+});
+
+/* 取消交易：Safe 不能单独撤销批准，只能生成同 nonce 的空交易作废 */
+function openCancelModal() {
+  if (!safeTx) {
+    toast("还没有待批准交易");
+    return;
+  }
+  $("cancelModal").hidden = false;
+  $("cancelBack").focus();
+}
+
+function closeCancelModal() {
+  $("cancelModal").hidden = true;
+}
+
+async function buildCancelTx() {
+  if (!safeTx) {
+    closeCancelModal();
+    return;
+  }
+  const nonce = safeTx.nonce;
+  const targetHash = safeTx.hash;
+  closeCancelModal();
+
+  try {
+    const rp = new ethers.JsonRpcProvider(RPC);
+    const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+    const current = await read.nonce();
+    if (current !== nonce) {
+      cancelTargetHash = null;
+      toast("nonce 已变化，原交易已经失效，无需取消", 9000);
+      return;
+    }
+  } catch (err) {
+    toast("读取 nonce 失败：" + (err.message || err), 7000);
+    return;
+  }
+
+  cancelTargetHash = targetHash;
+  $("sfTo").value = "0x0000000000000000000000000000000000000000";
+  $("sfValue").value = "0";
+  $("sfData").value = "0x";
+  pendingLabel = `取消交易 #${nonce}`;
+  showView("approve");
+  await safeComputeHash(false);
+
+  if (!safeTx || safeTx.hash === targetHash) {
+    cancelTargetHash = null;
+    toast("生成取消交易失败，请重试", 7000);
+    return;
+  }
+  toast(`已生成取消交易（nonce ${nonce}），请所有者链上批准后执行`, 9000);
+}
+
+$("sfCancelTx").onclick = openCancelModal;
+$("cancelBack").onclick = closeCancelModal;
+$("cancelConfirm").onclick = buildCancelTx;
+$("cancelModal").addEventListener("click", (e) => {
+  if (e.target === $("cancelModal")) closeCancelModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeCancelModal();
 });
 
 /* 支持直接带 #tx / #approve 打开 */
