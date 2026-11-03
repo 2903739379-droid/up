@@ -1709,6 +1709,11 @@ async function loadSafeData(rp) {
     $("sfApprovals").textContent = "";
     $("sfApprove").disabled = true;
     $("sfExec").disabled = true;
+
+    // 覆盖上方「多签地址」卡片里可能残留的上一个合约信息
+    $("multisigInfo").innerHTML =
+      `Safe 合约 · 阈值 <b>${threshold} / ${owners.length}</b> · Nonce <b>${nonce}</b><br>` +
+      `余额 ${ethers.formatEther(balance)} DAI · 下方为 Safe 操作区`;
   } catch (err) {
     $("sfThreshold").textContent = "读取失败";
   }
