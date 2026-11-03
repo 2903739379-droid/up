@@ -175,6 +175,15 @@
     </div>
     <div class="small" id="sfOwnerList" style="margin-top:8px">—</div>
 
+    <div id="sfPendingWrap" style="display:none;margin-top:14px">
+      <div class="row between">
+        <strong style="font-size:13px">待批准交易</strong>
+        <button class="ghost" id="sfPendingRefresh" style="padding:6px 12px;font-size:12px">刷新</button>
+      </div>
+      <div id="sfPendingList" class="small" style="margin-top:8px">—</div>
+      <div class="small" style="margin-top:6px;color:#B45309">其他人打开本页即可看到；配置 Telegram 后会同时收到推送。</div>
+    </div>
+
     <label>目标地址</label>
     <input id="sfTo" placeholder="0x...">
     <label>原生币数量（DAI）</label>
@@ -473,7 +482,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v15 · 2026-11-04 06:20";
+const BUILD = "v16 · 2026-11-04 06:33";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -1501,6 +1510,7 @@ async function fillTx(target, data, label, valueText = "0") {
     $("newSection").style.display = "none";
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+    pendingLabel = label;
     await safeComputeHash(false);
     return true;
   }
@@ -1928,6 +1938,11 @@ let safeMyApproved = false;
 let safeExecuting = false;
 let forcedMode = "auto";
 
+/* 待批准交易中继（Cloudflare Worker）。留空则只用本地模式。 */
+const API_BASE = "https://anubis-safe-relay.2903739379.workers.dev";
+let pendingLabel = "";
+let pendingItems = [];
+
 async function detectKind(addr, rp) {
   const code = await rp.getCode(addr).catch(() => "0x");
   if (!code || code === "0x") return "none";
@@ -2084,6 +2099,7 @@ async function loadSafeData(rp, restoreDraft = false) {
   } catch (err) {
     $("sfThreshold").textContent = "读取失败";
   }
+  await loadPending();
 }
 
 async function safeComputeHash(autoApprove) {
@@ -2135,10 +2151,112 @@ async function safeComputeHash(autoApprove) {
     $("sfSign").disabled = false;
     $("sfChainApprove").disabled = false;
     updateSafeShareLink();
+    const label = pendingLabel || "Safe 交易";
+    pendingLabel = "";
+    publishPending(label);
     await refreshSignatureStatus();
   } catch (err) {
     toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
+}
+
+/* ================= 待批准交易中继 ================= */
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function loadPending() {
+  if (!API_BASE || !multisig) return;
+  const wrap = $("sfPendingWrap");
+  const box = $("sfPendingList");
+  if (!wrap || !box) return;
+  wrap.style.display = "block";
+  try {
+    const res = await fetch(`${API_BASE}/api/pending?multisig=${multisig}`, { cache: "no-store" });
+    const data = await res.json();
+    pendingItems = Array.isArray(data.items) ? data.items : [];
+    renderPending();
+  } catch (err) {
+    box.textContent = "待办列表读取失败：" + (err.message || err);
+  }
+}
+
+function renderPending() {
+  const box = $("sfPendingList");
+  if (!box) return;
+  if (!pendingItems.length) {
+    box.textContent = "暂无待批准交易";
+    return;
+  }
+  box.innerHTML = "";
+  for (const item of pendingItems) {
+    const card = document.createElement("div");
+    card.className = "tx";
+    const time = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+    const dataShort = item.data && item.data.length > 42 ? `${item.data.slice(0, 42)}…` : item.data || "0x";
+    card.innerHTML =
+      `<div><b>${escapeHtml(item.label || "Safe 交易")}</b> <span class="small">${escapeHtml(time)}</span></div>` +
+      `<div class="small" style="margin-top:4px">目标 ${escapeHtml(item.to)}<br>` +
+      `金额 ${escapeHtml(item.value)} DAI<br>calldata ${escapeHtml(dataShort)}</div>`;
+
+    const btn = document.createElement("button");
+    btn.className = "ghost";
+    btn.style.cssText = "margin-top:8px;width:100%;padding:8px;font-size:12px";
+    btn.textContent = "载入并批准这笔";
+    btn.onclick = () => applyPending(item);
+    card.appendChild(btn);
+    box.appendChild(card);
+  }
+}
+
+async function applyPending(item) {
+  if (!item || !ethers.isAddress(item.to || "")) {
+    toast("这条待办的参数不完整");
+    return;
+  }
+  pendingLabel = item.label || "Safe 交易";
+  $("sfTo").value = item.to;
+  $("sfValue").value = item.value || "0";
+  $("sfData").value = item.data || "0x";
+  await safeComputeHash(false);
+  $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function publishPending(label) {
+  if (!API_BASE || !safeTx || !multisig) return;
+  try {
+    await fetch(`${API_BASE}/api/pending`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        multisig,
+        to: safeTx.to,
+        value: String($("sfValue").value || "0"),
+        data: safeTx.data,
+        hash: safeTx.hash,
+        label: label || pendingLabel || "Safe 交易",
+        shareUrl: $("sfLink").value,
+        createdBy: account || "",
+      }),
+    });
+    loadPending();
+  } catch {}
+}
+
+async function removePendingItem(hash) {
+  if (!API_BASE || !multisig || !hash) return;
+  try {
+    await fetch(
+      `${API_BASE}/api/pending?multisig=${multisig}&hash=${hash}`,
+      { method: "DELETE" }
+    );
+  } catch {}
+  loadPending();
 }
 
 /** 把这笔 Safe 交易编码进链接：其他所有者打开后看到同一笔交易和链上批准 */
@@ -2378,8 +2496,10 @@ async function safeExec() {
       ZERO,         // refundReceiver
       signatures    // signatures
     );
+    const executedHash = safeTx.hash;
     await tx.wait();
     storageSet("anubis.safeDraft", "");
+    await removePendingItem(executedHash);
     toast("已执行");
     await load();
   } catch (err) {
@@ -2552,6 +2672,7 @@ $("sfCopyLink").onclick = async () => {
 $("sfSign").onclick = safeSign;
 $("sfMain").onclick = safeExec;
 $("sfChainApprove").onclick = safeApproveOnChain;
+$("sfPendingRefresh").onclick = loadPending;
 $("sfSigIn").addEventListener("input", refreshSignatureStatus);
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
