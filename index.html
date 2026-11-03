@@ -98,6 +98,7 @@
   .tab.active{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff;border-color:transparent;box-shadow:0 6px 14px rgba(124,58,237,.25)}
   .pmode{background:#fff;color:#4C1D95;border:1px solid #EDE9FE;box-shadow:none;font-weight:700}
   .pmode.active{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff;border-color:transparent}
+  .mswitch.active{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff;border-color:transparent;box-shadow:0 6px 14px rgba(124,58,237,.25)}
 </style>
 </head>
 <body>
@@ -136,6 +137,16 @@
       <button class="grow" id="btnLoad">载入</button>
       <button class="ghost" id="btnCopy">复制</button>
     </div>
+
+    <div class="row" style="gap:6px;margin-top:10px">
+      <button class="ghost mswitch" data-mode="auto" style="flex:1;font-size:12px;padding:8px 4px">自动识别</button>
+      <button class="ghost mswitch" data-mode="custom" style="flex:1;font-size:12px;padding:8px 4px">自建多签</button>
+      <button class="ghost mswitch" data-mode="safe" style="flex:1;font-size:12px;padding:8px 4px">Safe</button>
+    </div>
+
+    <div class="small" id="diag" style="margin-top:10px">—</div>
+    <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
+
     <div class="small" id="multisigInfo" style="margin-top:8px"></div>
   </section>
 
@@ -545,6 +556,7 @@ async function load() {
   // 自动识别合约类型：Safe（guardsafe）还是本项目的 AnubisMultiSig
   const kind = await detectKind(multisig, readProvider);
   setPanelsForKind(kind);
+  await updateDiag(kind, readProvider);
   if (kind === "safe") {
     safeMode = true;
     await loadSafeData(readProvider);
@@ -686,6 +698,7 @@ function renderTx(id, t, mine) {
 }
 
 async function act(fn) {
+  if (!(await precheck())) return;
   const c = (await ensureWriter()) || rw;
   if (!c) {
     toast("钱包未授权：请点右上角「连接钱包」，在 MetaMask 里选择账户并确认", 8000);
@@ -733,6 +746,7 @@ async function submitTx() {
     toast("请先在上方「多签地址」填入地址并点「载入」");
     return;
   }
+  if (!(await precheck())) return;
   const c = (await ensureWriter()) || rw;
   if (!c) {
     toast("钱包未授权：请点右上角「连接钱包」，在 MetaMask 里选择账户并确认", 8000);
@@ -1742,12 +1756,14 @@ let safeMode = false;
 let safeTx = null; // { hash, to, value, data, nonce }
 let safeOwners = [];
 let safeThreshold = 0n;
+let forcedMode = "auto";
 
 async function detectKind(addr, rp) {
   const code = await rp.getCode(addr).catch(() => "0x");
   if (!code || code === "0x") return "none";
+  if (forcedMode === "custom" || forcedMode === "safe") return forcedMode;
 
-  // Safe：getThreshold + nonce 都能读
+  // Safe：getThreshold 能读
   try {
     const c = new ethers.Contract(addr, ["function getThreshold() view returns (uint256)"], rp);
     const t = await c.getThreshold();
@@ -1762,6 +1778,60 @@ async function detectKind(addr, rp) {
   } catch {}
 
   return "unknown";
+}
+
+async function updateDiag(kind, rp) {
+  let chainId = null;
+  if (window.ethereum) {
+    const hex = await window.ethereum.request({ method: "eth_chainId" }).catch(() => null);
+    if (hex) chainId = parseInt(hex, 16);
+  }
+  const code = await rp.getCode(multisig).catch(() => "0x");
+  const hasCode = !!code && code !== "0x";
+  const label = { safe: "Safe 多签", custom: "本项目多签", none: "无合约", unknown: "无法识别" }[kind] || kind;
+
+  $("diag").innerHTML =
+    `钱包网络：${chainId === null ? "未连接" : chainId + (chainId === 6714 ? " ✅" : " ❌")}` +
+    ` · 合约代码：${hasCode ? "有" : "无"}` +
+    ` · 类型：${label}` +
+    ` · 模式：${kind === "safe" ? "Safe 操作区" : kind === "custom" ? "自建多签操作区" : "—"}`;
+
+  const warns = [];
+  if (chainId !== null && chainId !== 6714) {
+    warns.push(`钱包当前在链 ${chainId}，不是 Anubis（6714）。请先在钱包里切换网络，否则交易会被回滚。`);
+  }
+  if (!hasCode) {
+    warns.push(`地址 ${multisig} 在 Anubis 上没有合约代码：地址写错，或钱包网络不对。`);
+  }
+  if (kind === "unknown") {
+    warns.push("这个地址既不是 Safe 多签，也不是本项目的多签合约，无法操作。");
+  }
+
+  const box = $("diagWarn");
+  if (warns.length) {
+    box.style.display = "block";
+    box.innerHTML = "⚠️ " + warns.join("<br>");
+  } else {
+    box.style.display = "none";
+  }
+}
+
+/** 提交前校验：钱包网络 + 地址代码 */
+async function precheck() {
+  if (window.ethereum) {
+    const hex = await window.ethereum.request({ method: "eth_chainId" }).catch(() => null);
+    if (hex && parseInt(hex, 16) !== 6714) {
+      toast(`钱包网络不是 Anubis（当前 ${parseInt(hex, 16)}），请先切换网络`, 9000);
+      return false;
+    }
+  }
+  const rp = new ethers.JsonRpcProvider(RPC);
+  const code = await rp.getCode(multisig).catch(() => "0x");
+  if (!code || code === "0x") {
+    toast("该地址在 Anubis 上没有合约代码，交易无法发送", 9000);
+    return false;
+  }
+  return true;
 }
 
 function setPanelsForKind(kind) {
@@ -1879,6 +1949,7 @@ async function safeApprove() {
     toast("请先计算哈希");
     return;
   }
+  if (!(await precheck())) return;
   const write = new ethers.Contract(multisig, SAFE_ABI, signer);
   try {
     toast("请在钱包中确认…", 8000);
@@ -1893,6 +1964,7 @@ async function safeApprove() {
 
 async function safeExec() {
   if (!safeTx || !signer) return;
+  if (!(await precheck())) return;
   const rp = provider || new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   const write = new ethers.Contract(multisig, SAFE_ABI, signer);
@@ -2030,7 +2102,17 @@ $("pwAmt").addEventListener("input", updatePowerUI);
 $("pwApprove").onclick = pwApprove;
 $("pwGo").onclick = pwGo;
 
-/* 社區 */
+/* 模式切换 */
+document.querySelectorAll(".mswitch").forEach((b) => {
+  b.onclick = () => {
+    forcedMode = b.dataset.mode;
+    document.querySelectorAll(".mswitch").forEach((x) => x.classList.toggle("active", x === b));
+    if (multisig) load();
+  };
+});
+document.querySelector('.mswitch[data-mode="auto"]').classList.add("active");
+
+/* 社区 */
 $("cmRefresh").onclick = loadCommunityData;
 $("sfHash").onclick = safeComputeHash;
 $("sfApprove").onclick = safeApprove;
