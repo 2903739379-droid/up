@@ -468,6 +468,7 @@
       <div class="small" id="sfSummary" style="margin-top:14px">还没有待批准交易，请先在「交易」页生成。</div>
       <div class="small" id="sfHashOut" style="margin-top:8px">—</div>
       <div class="small" id="sfApprovals" style="margin-top:6px"></div>
+      <div class="small" style="margin-top:6px;color:#6D28D9">链上批准只记录你的同意，不会转账；只有「执行」才会动资产。</div>
 
       <button id="sfChainApprove" style="width:100%;margin-top:14px" disabled>链上批准</button>
       <div class="row" style="margin-top:10px">
@@ -508,6 +509,18 @@
     <div class="row" style="gap:8px">
       <button class="ghost grow" id="approveLater">稍后</button>
       <button class="grow" id="approveGo">去批准</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+  <div class="modal-card">
+    <h2 id="confirmTitle">确认操作</h2>
+    <p class="small" id="confirmText"></p>
+    <div class="small" id="confirmDetail" style="background:#F7F5FF;border-radius:12px;padding:10px;margin-bottom:14px"></div>
+    <div class="row" style="gap:8px">
+      <button class="ghost grow" id="confirmCancel">返回</button>
+      <button class="grow" id="confirmOk">确认</button>
     </div>
   </div>
 </div>
@@ -573,7 +586,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v22 · 2026-11-04 07:35";
+const BUILD = "v23 · 2026-11-04 07:40";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2326,12 +2339,27 @@ function renderPending() {
       `<div class="small" style="margin-top:4px">目标 ${escapeHtml(item.to)}<br>` +
       `金额 ${escapeHtml(item.value)} DAI<br>calldata ${escapeHtml(dataShort)}</div>`;
 
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px";
+
     const btn = document.createElement("button");
     btn.className = "ghost";
-    btn.style.cssText = "margin-top:8px;width:100%;padding:8px;font-size:12px";
+    btn.style.cssText = "flex:1;padding:8px;font-size:12px";
     btn.textContent = "载入并批准这笔";
     btn.onclick = () => applyPending(item);
-    card.appendChild(btn);
+
+    const del = document.createElement("button");
+    del.className = "link-danger";
+    del.style.cssText = "width:auto;margin:0;padding:8px 10px;font-size:12px";
+    del.textContent = "移除";
+    del.setAttribute("aria-label", `从列表移除：${item.label || "Safe 交易"}`);
+    del.onclick = () => {
+      if (!confirm(`从列表移除「${item.label || "Safe 交易"}」？\n已上链的批准不会撤销。`)) return;
+      removePendingItem(item.hash);
+    };
+
+    row.append(btn, del);
+    card.appendChild(row);
     box.appendChild(card);
   }
 }
@@ -2815,8 +2843,71 @@ $("sfCopyLink").onclick = async () => {
     toast("已选中链接，请手动复制", 8000);
   }
 };
-$("sfMain").onclick = safeExec;
-$("sfChainApprove").onclick = safeApproveOnChain;
+let confirmAction = null;
+
+function txDetailHtml() {
+  if (!safeTx) return "";
+  const val = $("sfValue").value || "0";
+  const data = $("sfData").value || "0x";
+  const dataShort = data.length > 50 ? data.slice(0, 50) + "…" : data;
+  return (
+    `目标 ${escapeHtml(safeTx.to)}<br>` +
+    `金额 ${escapeHtml(val)} DAI<br>` +
+    `calldata ${escapeHtml(dataShort)}<br>` +
+    `哈希 ${escapeHtml(safeTx.hash.slice(0, 10))}…`
+  );
+}
+
+function openConfirm({ title, text, okText, danger, action }) {
+  if (!safeTx) {
+    toast("还没有待批准交易");
+    return;
+  }
+  confirmAction = action;
+  $("confirmTitle").textContent = title;
+  $("confirmText").textContent = text;
+  $("confirmDetail").innerHTML = txDetailHtml();
+  $("confirmOk").textContent = okText;
+  $("confirmOk").className = danger ? "danger grow" : "grow";
+  $("confirmModal").hidden = false;
+  $("confirmCancel").focus();
+}
+
+function closeConfirm() {
+  $("confirmModal").hidden = true;
+  confirmAction = null;
+}
+
+$("confirmCancel").onclick = closeConfirm;
+$("confirmOk").onclick = () => {
+  const action = confirmAction;
+  closeConfirm();
+  if (action) action();
+};
+$("confirmModal").addEventListener("click", (e) => {
+  if (e.target === $("confirmModal")) closeConfirm();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeConfirm();
+});
+
+$("sfMain").onclick = () =>
+  openConfirm({
+    title: "确认执行？",
+    text: "执行会立即上链，无法撤销，请先核对目标、金额和 calldata。",
+    okText: "确认执行",
+    danger: true,
+    action: safeExec,
+  });
+
+$("sfChainApprove").onclick = () =>
+  openConfirm({
+    title: "确认链上批准？",
+    text: "链上批准只记录你的同意，不会转账；只有执行才会动资产。批准后无法单独撤销。",
+    okText: "确认批准",
+    danger: false,
+    action: safeApproveOnChain,
+  });
 $("sfPendingRefresh").onclick = loadPending;
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
