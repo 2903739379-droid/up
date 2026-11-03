@@ -485,6 +485,7 @@ async function connect() {
     $("status").classList.add("on");
     $("btnConnect").textContent = "重新连接";
     await checkChain();
+    await ensureWriter();
     await load();
   } catch (err) {
     toast(friendly(err));
@@ -654,9 +655,9 @@ function renderTx(id, t, mine) {
     bar.appendChild(b);
   };
 
-  if (canConfirm) mk("确认", "ok", () => act(() => rw.confirmTransaction(id)));
-  if (canRevoke) mk("撤销", "ghost", () => act(() => rw.revokeConfirmation(id)));
-  if (canExecute) mk("执行", "", () => act(() => rw.executeTransaction(id)));
+  if (canConfirm) mk("确认", "ok", () => act((w) => w.confirmTransaction(id)));
+  if (canRevoke) mk("撤销", "ghost", () => act((w) => w.revokeConfirmation(id)));
+  if (canExecute) mk("执行", "", () => act((w) => w.executeTransaction(id)));
   if (!canConfirm && !canRevoke && !canExecute) {
     const span = document.createElement("span");
     span.className = "small";
@@ -669,13 +670,14 @@ function renderTx(id, t, mine) {
 }
 
 async function act(fn) {
-  if (!signer) {
-    toast("请先连接钱包");
+  const c = (await ensureWriter()) || rw;
+  if (!c) {
+    toast("钱包未授权：请点右上角「连接钱包」，在 MetaMask 里选择账户并确认", 8000);
     return;
   }
   try {
     toast("请在钱包中确认这笔交易…", 8000);
-    const tx = await fn();
+    const tx = await fn(c);
     const rc = await tx.wait();
     toast("已上链：" + rc.hash.slice(0, 10) + "…");
     await load();
@@ -684,9 +686,32 @@ async function act(fn) {
   }
 }
 
+/* 按需获取可写合约：即使之前连接时没载入地址，也能在提交时补救 */
+async function ensureWriter() {
+  if (!window.ethereum || !multisig) return null;
+  try {
+    const p = new ethers.BrowserProvider(window.ethereum);
+    const accounts = await p.send("eth_accounts");
+    if (!accounts || accounts.length === 0) return null;
+    const s = await p.getSigner();
+    provider = provider || p;
+    account = accounts[0];
+    signer = s;
+    rw = new ethers.Contract(multisig, ABI, s);
+    return rw;
+  } catch {
+    return null;
+  }
+}
+
 async function submitTx() {
-  if (!rw) {
-    toast("请先连接钱包");
+  if (!multisig) {
+    toast("请先在上方「多签地址」填入地址并点「载入」");
+    return;
+  }
+  const c = (await ensureWriter()) || rw;
+  if (!c) {
+    toast("钱包未授权：请点右上角「连接钱包」，在 MetaMask 里选择账户并确认", 8000);
     return;
   }
   const to = ($("to").value || "").trim();
@@ -712,7 +737,7 @@ async function submitTx() {
 
   try {
     toast("请在钱包中确认…", 8000);
-    const tx = await rw.submitTransaction(to, value, data);
+    const tx = await c.submitTransaction(to, value, data);
     await tx.wait();
     toast("已提交，自动完成第 1 个确认");
     $("to").value = "";
