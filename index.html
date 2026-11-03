@@ -147,6 +147,42 @@
     <div id="txList" style="margin-top:10px"></div>
   </section>
 
+  <section class="card" id="safeSection" style="display:none">
+    <div class="row between">
+      <strong style="font-size:20px">Safe 多签</strong>
+      <span class="badge b-done">guardsafe 兼容</span>
+    </div>
+    <div class="small" style="margin-top:4px">这是 Safe 合约，采用「链上批准 + 签名执行」模式。</div>
+
+    <div class="row" style="gap:18px;margin-top:14px">
+      <div><div class="small">阈值</div><b id="sfThreshold">—</b></div>
+      <div><div class="small">所有者</div><b id="sfOwnerCount">—</b></div>
+      <div><div class="small">Nonce</div><b id="sfNonce">—</b></div>
+    </div>
+    <div class="small" id="sfOwnerList" style="margin-top:8px">—</div>
+
+    <label>目标地址</label>
+    <input id="sfTo" placeholder="0x...">
+    <label>原生币数量（DAI）</label>
+    <input id="sfValue" value="0" inputmode="decimal">
+    <label>calldata（纯转账填 0x）</label>
+    <textarea id="sfData" placeholder="0x"></textarea>
+
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="grow ghost" id="sfHash">计算交易哈希</button>
+    </div>
+    <div class="small" id="sfHashOut" style="margin-top:8px">—</div>
+    <div class="small" id="sfApprovals" style="margin-top:6px"></div>
+
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="grow" id="sfApprove" disabled>批准此交易</button>
+      <button class="grow" id="sfExec" disabled>执行</button>
+    </div>
+    <div class="small" style="margin-top:8px">
+      每位所有者用自己的钱包批准同一个哈希；达到阈值后任意一人执行。哈希里含 nonce，若期间有别的交易执行，需重新计算。
+    </div>
+  </section>
+
   <section class="card" id="assetSection" style="display:none">
     <div class="row between">
       <div>
@@ -502,6 +538,17 @@ async function load() {
   $("multisig").value = multisig;
 
   const readProvider = provider || new ethers.JsonRpcProvider(RPC);
+
+  // 自动识别合约类型：Safe（guardsafe）还是本项目的 AnubisMultiSig
+  const kind = await detectKind(multisig, readProvider);
+  setPanelsForKind(kind);
+  if (kind === "safe") {
+    safeMode = true;
+    await loadSafeData(readProvider);
+    return;
+  }
+  safeMode = false;
+
   ro = new ethers.Contract(multisig, ABI, readProvider);
   rw = signer ? new ethers.Contract(multisig, ABI, signer) : null;
 
@@ -1595,6 +1642,206 @@ async function loadCommunityData() {
   }
 }
 
+/* ================= Safe 模式（兼容 guardsafe 创建的多签） ================= */
+
+const SAFE_ABI = [
+  "function getOwners() view returns (address[])",
+  "function getThreshold() view returns (uint256)",
+  "function nonce() view returns (uint256)",
+  "function isOwner(address) view returns (bool)",
+  "function approvedHashes(address, bytes32) view returns (uint256)",
+  "function getTransactionHash(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 _nonce) view returns (bytes32)",
+  "function approveHash(bytes32 hashToApprove)",
+  "function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) payable returns (bool)",
+];
+
+let safeMode = false;
+let safeTx = null; // { hash, to, value, data, nonce }
+let safeOwners = [];
+let safeThreshold = 0n;
+
+async function detectKind(addr, rp) {
+  try {
+    const c = new ethers.Contract(addr, ["function getThreshold() view returns (uint256)"], rp);
+    const t = await c.getThreshold();
+    if (t > 0n) return "safe";
+  } catch {}
+  return "custom";
+}
+
+function setPanelsForKind(kind) {
+  const safe = kind === "safe";
+  $("safeSection").style.display = safe ? "block" : "none";
+  const custom = ["assetSection", "powerPage", "swapPage", "communityPage", "tokenSection", "newSection", "helixSection", "dataSection", "txSection"];
+  for (const id of custom) {
+    if (safe) $(id).style.display = "none";
+  }
+  if (safe) {
+    for (const id of ["assetSection", "powerPage", "swapPage", "communityPage", "tokenSection", "newSection", "helixSection", "dataSection"]) {
+      if ($(id)) $(id).dataset.hiddenBySafe = "1";
+    }
+  } else {
+    for (const id of custom) if ($(id)) delete $(id).dataset.hiddenBySafe;
+  }
+}
+
+async function loadSafeData(rp) {
+  const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+  try {
+    const [owners, threshold, nonce, balance] = await Promise.all([
+      read.getOwners(),
+      read.getThreshold(),
+      read.nonce(),
+      rp.getBalance(multisig),
+    ]);
+    safeOwners = owners;
+    safeThreshold = threshold;
+
+    $("sfThreshold").textContent = `${threshold} / ${owners.length}`;
+    $("sfOwnerCount").textContent = owners.length + " 人";
+    $("sfNonce").textContent = nonce.toString();
+    $("sfOwnerList").innerHTML =
+      `余额 ${ethers.formatEther(balance)} DAI<br>` +
+      owners.map((o, i) => `${i + 1}. ${o}${o.toLowerCase() === (account || "").toLowerCase() ? " ← 你" : ""}`).join("<br>");
+
+    safeTx = null;
+    $("sfHashOut").textContent = "—";
+    $("sfApprovals").textContent = "";
+    $("sfApprove").disabled = true;
+    $("sfExec").disabled = true;
+  } catch (err) {
+    $("sfThreshold").textContent = "读取失败";
+  }
+}
+
+async function safeComputeHash() {
+  if (!ethers.isAddress(($("sfTo").value || "").trim())) {
+    toast("目标地址不正确");
+    return;
+  }
+  const data = ($("sfData").value || "0x").trim() || "0x";
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(data)) {
+    toast("calldata 必须是 0x 开头的十六进制");
+    return;
+  }
+  let value;
+  try {
+    value = ethers.parseEther(String($("sfValue").value || "0"));
+  } catch {
+    toast("数量格式不正确");
+    return;
+  }
+
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+  try {
+    const nonce = await read.nonce();
+    const hash = await read.getTransactionHash(
+      ethers.getAddress($("sfTo").value.trim()),
+      value,
+      data,
+      0,
+      0,
+      0,
+      ZERO,
+      ZERO,
+      nonce
+    );
+    safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
+    $("sfHashOut").textContent = "交易哈希：" + hash;
+    $("sfApprove").disabled = false;
+    await refreshSafeApprovals();
+  } catch (err) {
+    toast("计算失败：" + (err.shortMessage || err.message), 6000);
+  }
+}
+
+async function refreshSafeApprovals() {
+  if (!safeTx) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+  const rows = [];
+  let approved = 0;
+  for (const o of safeOwners) {
+    try {
+      const v = await read.approvedHashes(o, safeTx.hash);
+      const ok = v === 1n;
+      if (ok) approved++;
+      rows.push(`${ok ? "✅" : "⬜"} ${o}`);
+    } catch {
+      rows.push(`⬜ ${o}`);
+    }
+  }
+  $("sfApprovals").innerHTML = `已批准 ${approved} / ${safeThreshold}：<br>` + rows.join("<br>");
+  $("sfExec").disabled = approved < Number(safeThreshold);
+}
+
+async function safeApprove() {
+  if (!safeTx || !signer) {
+    toast("请先计算哈希");
+    return;
+  }
+  const write = new ethers.Contract(multisig, SAFE_ABI, signer);
+  try {
+    toast("请在钱包中确认…", 8000);
+    const tx = await write.approveHash(safeTx.hash);
+    await tx.wait();
+    toast("已批准");
+    await refreshSafeApprovals();
+  } catch (err) {
+    toast("批准失败：" + (err.shortMessage || err.message), 6000);
+  }
+}
+
+async function safeExec() {
+  if (!safeTx || !signer) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+  const write = new ethers.Contract(multisig, SAFE_ABI, signer);
+
+  try {
+    const current = await read.nonce();
+    if (current !== safeTx.nonce) {
+      toast("nonce 已变化，请重新计算哈希", 6000);
+      return;
+    }
+
+    const approved = [];
+    for (const o of safeOwners) {
+      const v = await read.approvedHashes(o, safeTx.hash);
+      if (v === 1n) approved.push(o);
+    }
+    if (approved.length < Number(safeThreshold)) {
+      toast("批准数量不足");
+      return;
+    }
+
+    approved.sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1));
+    const parts = approved.map((o) =>
+      ethers.concat([ethers.zeroPadValue(o, 32), ethers.zeroPadValue("0x", 32), "0x01"])
+    );
+    const signatures = ethers.concat(parts);
+
+    toast("请在钱包中确认执行…", 8000);
+    const tx = await write.execTransaction(
+      safeTx.to,
+      safeTx.value,
+      safeTx.data,
+      0,
+      0,
+      0,
+      ZERO,
+      ZERO,
+      signatures
+    );
+    await tx.wait();
+    toast("已执行");
+    await load();
+  } catch (err) {
+    toast("执行失败：" + (err.shortMessage || err.message), 6000);
+  }
+}
+
 $("btnConnect").onclick = connect;
 $("btnSwitch").onclick = switchChain;
 $("btnLoad").onclick = load;
@@ -1687,6 +1934,9 @@ $("pwGo").onclick = pwGo;
 
 /* 社區 */
 $("cmRefresh").onclick = loadCommunityData;
+$("sfHash").onclick = safeComputeHash;
+$("sfApprove").onclick = safeApprove;
+$("sfExec").onclick = safeExec;
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
   if (!v) return;
