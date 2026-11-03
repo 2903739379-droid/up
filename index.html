@@ -181,18 +181,13 @@
     <label>calldata（纯转账填 0x）</label>
     <textarea id="sfData" placeholder="0x"></textarea>
 
-    <div class="row" style="margin-top:12px;gap:8px">
-      <button class="grow ghost" id="sfHash">计算交易哈希</button>
-    </div>
-    <div class="small" id="sfHashOut" style="margin-top:8px">—</div>
+    <div class="small" id="sfHashOut" style="margin-top:12px">—</div>
     <div class="small" id="sfApprovals" style="margin-top:6px"></div>
 
-    <div class="row" style="margin-top:12px;gap:8px">
-      <button class="grow" id="sfApprove" disabled>批准此交易</button>
-      <button class="grow" id="sfExec" disabled>执行</button>
-    </div>
+    <button id="sfMain" style="width:100%;margin-top:14px" disabled>等待计算…</button>
+    <button class="ghost" id="sfHash" style="width:100%;margin-top:8px;font-size:12px;padding:8px">重新计算哈希</button>
     <div class="small" style="margin-top:8px">
-      每位所有者用自己的钱包批准同一个哈希；达到阈值后任意一人执行。哈希里含 nonce，若期间有别的交易执行，需重新计算。
+      点上面板里的操作按钮会自动算好哈希，你只需在这里点一次「批准」，或最后点「执行」。
     </div>
   </section>
 
@@ -1399,8 +1394,8 @@ function fillTx(target, data, label) {
     $("newSection").style.display = "none";
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
-    // 自动算哈希，算完直接请求钱包批准
-    setTimeout(() => safeComputeHash(true), 350);
+    // 自动算哈希；批准由用户点唯一的主按钮完成
+    setTimeout(() => safeComputeHash(false), 350);
     return;
   }
   $("to").value = target;
@@ -1814,6 +1809,9 @@ let currentKind = "custom";
 let safeTx = null; // { hash, to, value, data, nonce }
 let safeOwners = [];
 let safeThreshold = 0n;
+let safeApprovedCount = 0;
+let safeMyApproved = false;
+let safeExecuting = false;
 let forcedMode = "auto";
 
 async function detectKind(addr, rp) {
@@ -1954,8 +1952,9 @@ async function loadSafeData(rp) {
     safeTx = null;
     $("sfHashOut").textContent = "—";
     $("sfApprovals").textContent = "";
-    $("sfApprove").disabled = true;
-    $("sfExec").disabled = true;
+    safeApprovedCount = 0;
+    safeMyApproved = false;
+    updateSafeMainButton();
 
     // 覆盖上方「多签地址」卡片里可能残留的上一个合约信息
     $("multisigInfo").innerHTML =
@@ -2001,7 +2000,6 @@ async function safeComputeHash(autoApprove) {
     );
     safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
     $("sfHashOut").textContent = "交易哈希：" + hash;
-    $("sfApprove").disabled = false;
     await refreshSafeApprovals();
 
     if (autoApprove) {
@@ -2019,24 +2017,56 @@ async function safeComputeHash(autoApprove) {
 }
 
 async function refreshSafeApprovals() {
-  if (!safeTx) return;
+  if (!safeTx) return 0;
   const rp = provider || new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   const rows = [];
   let approved = 0;
+  let mine = false;
   for (const o of safeOwners) {
     try {
       const v = await read.approvedHashes(o, safeTx.hash);
       const ok = v === 1n;
       if (ok) approved++;
+      if (ok && account && o.toLowerCase() === account.toLowerCase()) mine = true;
       rows.push(`${ok ? "✅" : "⬜"} ${o}`);
     } catch {
       rows.push(`⬜ ${o}`);
     }
   }
+  safeApprovedCount = approved;
+  safeMyApproved = mine;
   $("sfApprovals").innerHTML = `已批准 ${approved} / ${safeThreshold}：<br>` + rows.join("<br>");
-  $("sfExec").disabled = approved < Number(safeThreshold);
+  updateSafeMainButton();
   return approved;
+}
+
+/** 单一主按钮的状态机：计算中 → 批准 → 等待他人 → 执行 */
+function updateSafeMainButton() {
+  const btn = $("sfMain");
+  if (!btn) return;
+  if (!safeTx) {
+    btn.disabled = true;
+    btn.textContent = "等待计算…";
+    return;
+  }
+  if (safeExecuting) {
+    btn.disabled = true;
+    btn.textContent = "执行中…";
+    return;
+  }
+  if (safeApprovedCount >= Number(safeThreshold)) {
+    btn.disabled = false;
+    btn.textContent = "执行（已达阈值）";
+    return;
+  }
+  if (safeMyApproved) {
+    btn.disabled = true;
+    btn.textContent = `已批准，等待其他所有者（${safeApprovedCount}/${safeThreshold}）`;
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = "批准此交易";
 }
 
 async function safeApprove() {
@@ -2051,11 +2081,7 @@ async function safeApprove() {
     const tx = await write.approveHash(safeTx.hash);
     await tx.wait();
     toast("已批准");
-    const approved = await refreshSafeApprovals();
-    if (approved >= Number(safeThreshold)) {
-      toast("已达阈值，正在自动执行…", 8000);
-      await safeExec();
-    }
+    await refreshSafeApprovals();
   } catch (err) {
     toast("批准失败：" + (err.shortMessage || err.message), 6000); logError("批准", err);
   }
@@ -2064,6 +2090,8 @@ async function safeApprove() {
 async function safeExec() {
   if (!safeTx || !signer) return;
   if (!(await precheck())) return;
+  safeExecuting = true;
+  updateSafeMainButton();
   const rp = provider || new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   const write = new ethers.Contract(multisig, SAFE_ABI, signer);
@@ -2108,6 +2136,9 @@ async function safeExec() {
     await load();
   } catch (err) {
     toast("执行失败：" + (err.shortMessage || err.message), 6000); logError("执行", err);
+  } finally {
+    safeExecuting = false;
+    updateSafeMainButton();
   }
 }
 
@@ -2255,8 +2286,11 @@ $("btnSelfCheck").onclick = selfCheck;
 /* 社区 */
 $("cmRefresh").onclick = loadCommunityData;
 $("sfHash").onclick = safeComputeHash;
-$("sfApprove").onclick = safeApprove;
-$("sfExec").onclick = safeExec;
+$("sfMain").onclick = async () => {
+  if (!safeTx) return;
+  if (safeApprovedCount >= Number(safeThreshold)) await safeExec();
+  else await safeApprove();
+};
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
   if (!v) return;
