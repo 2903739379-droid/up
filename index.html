@@ -449,7 +449,7 @@ const ABI = [
 const $ = (id) => document.getElementById(id);
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v10 · 2026-11-04 04:20";
+const BUILD = "v11 · 2026-11-04 04:35";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2037,15 +2037,16 @@ async function safeComputeHash(autoApprove) {
   try {
     const nonce = await read.nonce();
     const hash = await read.getTransactionHash(
-      ethers.getAddress($("sfTo").value.trim()),
-      value,
-      data,
-      0,
-      0,
-      0,
-      ZERO,
-      ZERO,
-      nonce
+      ethers.getAddress($("sfTo").value.trim()), // to
+      value,      // value
+      data,       // data
+      0,          // operation
+      0,          // safeTxGas
+      0,          // baseGas
+      0,          // gasPrice
+      ZERO,       // gasToken
+      ZERO,       // refundReceiver
+      nonce       // nonce
     );
     safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
     $("sfHashOut").textContent = "交易哈希：" + hash;
@@ -2197,15 +2198,16 @@ async function safeExec() {
 
     toast("请在钱包中确认执行…", 8000);
     const tx = await write.execTransaction(
-      safeTx.to,
-      safeTx.value,
-      safeTx.data,
-      0,
-      0,
-      0,
-      ZERO,
-      ZERO,
-      signatures
+      safeTx.to,   // to
+      safeTx.value, // value
+      safeTx.data,  // data
+      0,            // operation
+      0,            // safeTxGas
+      0,            // baseGas
+      0,            // gasPrice
+      ZERO,         // gasToken
+      ZERO,         // refundReceiver
+      signatures    // signatures
     );
     await tx.wait();
     toast("已执行");
@@ -2391,23 +2393,4 @@ $("multisig").value = localStorage.getItem("anubis.multisig") || "";
 // 支持 ?ms=0x... 直接打开某个多签（方便分享链接与截图核对）
 try {
   const deep = new URLSearchParams(location.search).get("ms");
-  if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
-} catch {}
-
-renderHelix();
-if ($("build")) $("build").textContent = BUILD;
-if ($("multisig").value) load();
-
-if (window.ethereum) {
-  window.ethereum.on?.("accountsChanged", () => location.reload());
-  window.ethereum.on?.("chainChanged", () => location.reload());
-}
-
-
-
-
-
-
-</script>
-</body>
-</html>
+  if (de
