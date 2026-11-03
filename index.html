@@ -145,6 +145,7 @@
     </div>
 
     <div class="small" id="diag" style="margin-top:10px">—</div>
+    <button class="ghost" id="btnSelfCheck" style="width:100%;margin-top:8px;font-size:12px;padding:8px">运行自检（把结果发给我）</button>
     <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
 
     <div class="small" id="multisigInfo" style="margin-top:8px"></div>
@@ -1794,7 +1795,8 @@ async function updateDiag(kind, rp) {
     `钱包网络：${chainId === null ? "未连接" : chainId + (chainId === 6714 ? " ✅" : " ❌")}` +
     ` · 合约代码：${hasCode ? "有" : "无"}` +
     ` · 类型：${label}` +
-    ` · 模式：${kind === "safe" ? "Safe 操作区" : kind === "custom" ? "自建多签操作区" : "—"}`;
+    ` · 模式：${kind === "safe" ? "Safe 操作区" : kind === "custom" ? "自建多签操作区" : "—"}` +
+    ` · 账户：${account ? (await checkOwnership() ? "所有者 ✅" : "非所有者 ❌") : "未连接"}`;
 
   const warns = [];
   if (chainId !== null && chainId !== 6714) {
@@ -1816,7 +1818,23 @@ async function updateDiag(kind, rp) {
   }
 }
 
-/** 提交前校验：钱包网络 + 地址代码 */
+/** 检查当前连接账户是否是所有者 */
+async function checkOwnership() {
+  if (!account || !multisig) return null;
+  const rp = new ethers.JsonRpcProvider(RPC);
+  try {
+    if (safeMode) {
+      const c = new ethers.Contract(multisig, ["function isOwner(address) view returns (bool)"], rp);
+      return await c.isOwner(account);
+    }
+    const c = new ethers.Contract(multisig, ["function isOwner(address) view returns (bool)"], rp);
+    return await c.isOwner(account);
+  } catch {
+    return null;
+  }
+}
+
+/** 提交前校验：钱包网络 + 地址代码 + 是否所有者 */
 async function precheck() {
   if (window.ethereum) {
     const hex = await window.ethereum.request({ method: "eth_chainId" }).catch(() => null);
@@ -1829,6 +1847,15 @@ async function precheck() {
   const code = await rp.getCode(multisig).catch(() => "0x");
   if (!code || code === "0x") {
     toast("该地址在 Anubis 上没有合约代码，交易无法发送", 9000);
+    return false;
+  }
+
+  const isOwner = await checkOwnership();
+  if (isOwner === false) {
+    const w = $("diagWarn");
+    w.style.display = "block";
+    w.innerHTML = `⚠️ 当前连接的钱包 <b>${account}</b> 不是这个多签的所有者，无法发起/确认/执行。<br>请切换到所有者账户后重新连接。`;
+    toast("当前钱包不是所有者，交易会被合约拒绝", 9000);
     return false;
   }
   return true;
@@ -2102,6 +2129,46 @@ $("pwAmt").addEventListener("input", updatePowerUI);
 $("pwApprove").onclick = pwApprove;
 $("pwGo").onclick = pwGo;
 
+async function selfCheck() {
+  const rp = new ethers.JsonRpcProvider(RPC);
+  const lines = [];
+
+  let chain = null;
+  if (window.ethereum) {
+    const h = await window.ethereum.request({ method: "eth_chainId" }).catch(() => null);
+    if (h) chain = parseInt(h, 16);
+  }
+  lines.push("钱包网络: " + (chain === null ? "未连接" : chain) + (chain === 6714 ? " ✅" : " ❌"));
+  lines.push("连接账户: " + (account || "未连接"));
+  lines.push("多签地址: " + (multisig || "未载入"));
+
+  if (multisig) {
+    const code = await rp.getCode(multisig).catch(() => "0x");
+    lines.push("合约代码: " + (code && code !== "0x" ? "有 ✅" : "无 ❌"));
+    const kind = await detectKind(multisig, rp);
+    lines.push("识别类型: " + kind);
+
+    try {
+      if (kind === "custom") {
+        const c = new ethers.Contract(multisig, ABI, rp);
+        lines.push("阈值: " + (await c.REQUIRED_CONFIRMATIONS()).toString());
+        lines.push("交易数: " + (await c.transactionCount()).toString());
+      } else if (kind === "safe") {
+        const c = new ethers.Contract(multisig, SAFE_ABI, rp);
+        lines.push("阈值: " + (await c.getThreshold()).toString());
+        lines.push("nonce: " + (await c.nonce()).toString());
+      }
+    } catch {}
+
+    const owner = await checkOwnership();
+    lines.push("是否所有者: " + (owner === null ? "无法判断" : owner ? "是 ✅" : "否 ❌"));
+  }
+
+  const box = $("diagWarn");
+  box.style.display = "block";
+  box.innerHTML = "<b>自检结果</b><br>" + lines.join("<br>");
+}
+
 /* 模式切换 */
 document.querySelectorAll(".mswitch").forEach((b) => {
   b.onclick = () => {
@@ -2111,6 +2178,7 @@ document.querySelectorAll(".mswitch").forEach((b) => {
   };
 });
 document.querySelector('.mswitch[data-mode="auto"]').classList.add("active");
+$("btnSelfCheck").onclick = selfCheck;
 
 /* 社区 */
 $("cmRefresh").onclick = loadCommunityData;
