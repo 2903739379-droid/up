@@ -467,6 +467,8 @@ function friendly(err) {
   if (/InsufficientConfirmations/i.test(m)) return "确认数不足，需要 2 个";
   if (/user rejected|ACTION_REJECTED/i.test(m)) return "你在钱包里取消了操作";
   if (/insufficient funds/i.test(m)) return "钱包余额不够付 gas";
+  if (/no data present|lIKELY require|call revert exception/i.test(m))
+    return "调用被回滚且没有返回原因：多半是合约类型不匹配（Safe 用 Safe 界面、自建多签用自建界面），或钱包网络不是 Anubis";
   return m;
 }
 
@@ -555,6 +557,20 @@ async function load() {
     loadPowerData();
     loadCommunityData();
     loadHelixData();
+    return;
+  }
+
+  if (kind === "none") {
+    safeMode = false;
+    toast("这个地址在当前网络（Anubis 6714）上没有合约代码：地址写错了，或钱包网络不对", 9000);
+    $("multisigInfo").textContent = "该地址上没有合约";
+    return;
+  }
+
+  if (kind === "unknown") {
+    safeMode = false;
+    toast("这个地址既不是 Safe 多签，也不是本项目的多签合约", 9000);
+    $("multisigInfo").textContent = "无法识别的合约类型";
     return;
   }
   safeMode = false;
@@ -1728,12 +1744,24 @@ let safeOwners = [];
 let safeThreshold = 0n;
 
 async function detectKind(addr, rp) {
+  const code = await rp.getCode(addr).catch(() => "0x");
+  if (!code || code === "0x") return "none";
+
+  // Safe：getThreshold + nonce 都能读
   try {
     const c = new ethers.Contract(addr, ["function getThreshold() view returns (uint256)"], rp);
     const t = await c.getThreshold();
     if (t > 0n) return "safe";
   } catch {}
-  return "custom";
+
+  // 本项目合约：REQUIRED_CONFIRMATIONS 能读
+  try {
+    const c = new ethers.Contract(addr, ["function REQUIRED_CONFIRMATIONS() view returns (uint256)"], rp);
+    await c.REQUIRED_CONFIRMATIONS();
+    return "custom";
+  } catch {}
+
+  return "unknown";
 }
 
 function setPanelsForKind(kind) {
