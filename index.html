@@ -184,10 +184,20 @@
     <div class="small" id="sfHashOut" style="margin-top:12px">—</div>
     <div class="small" id="sfApprovals" style="margin-top:6px"></div>
 
-    <button id="sfMain" style="width:100%;margin-top:14px" disabled>等待计算…</button>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="grow ghost" id="sfSign" disabled>用钱包签名</button>
+      <button class="grow" id="sfMain" disabled>执行</button>
+    </div>
+
+    <label>我的签名（复制发给其他所有者）</label>
+    <textarea id="sfSigOut" readonly placeholder="点上面「用钱包签名」生成" style="font-size:11px;min-height:56px"></textarea>
+
+    <label>已收集的签名（每行一个）</label>
+    <textarea id="sfSigIn" placeholder="粘贴其他所有者发来的签名，每行一个" style="font-size:11px;min-height:56px"></textarea>
+
     <button class="ghost" id="sfHash" style="width:100%;margin-top:8px;font-size:12px;padding:8px">重新计算哈希</button>
     <div class="small" style="margin-top:8px">
-      点上面板里的操作按钮会自动算好哈希，你只需在这里点一次「批准」，或最后点「执行」。
+      点面板里的操作按钮会自动算好哈希。然后点「用钱包签名」，把签名发给其他人收集；凑够阈值后点「执行」。
     </div>
   </section>
 
@@ -439,7 +449,7 @@ const ABI = [
 const $ = (id) => document.getElementById(id);
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v9 · 2026-11-04 04:05";
+const BUILD = "v10 · 2026-11-04 04:20";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2039,48 +2049,80 @@ async function safeComputeHash(autoApprove) {
     );
     safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
     $("sfHashOut").textContent = "交易哈希：" + hash;
-    await refreshSafeApprovals();
-
-    if (autoApprove) {
-      const mine = account ? await read.approvedHashes(account, hash).catch(() => 0n) : 0n;
-      if (mine === 0n) {
-        toast("哈希已生成，请在钱包中确认「批准」…", 8000);
-        await safeApprove();
-      } else {
-        toast("你已经批准过这笔交易");
-      }
-    }
+    $("sfSigOut").value = "";
+    refreshSignatureStatus();
+    $("sfSign").disabled = false;
   } catch (err) {
     toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
 }
 
-async function refreshSafeApprovals() {
-  if (!safeTx) return 0;
-  const rp = new ethers.JsonRpcProvider(RPC);
-  const read = new ethers.Contract(multisig, SAFE_ABI, rp);
-  const rows = [];
-  let approved = 0;
-  let mine = false;
-  for (const o of safeOwners) {
-    try {
-      const v = await read.approvedHashes(o, safeTx.hash);
-      const ok = v === 1n;
-      if (ok) approved++;
-      if (ok && account && o.toLowerCase() === account.toLowerCase()) mine = true;
-      rows.push(`${ok ? "✅" : "⬜"} ${o}`);
-    } catch {
-      rows.push(`⬜ ${o}`);
-    }
-  }
-  safeApprovedCount = approved;
-  safeMyApproved = mine;
-  $("sfApprovals").innerHTML = `已批准 ${approved} / ${safeThreshold}：<br>` + rows.join("<br>");
-  updateSafeMainButton();
-  return approved;
+const SAFE_TYPES = {
+  SafeTx: [
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "data", type: "bytes" },
+    { name: "operation", type: "uint8" },
+    { name: "safeTxGas", type: "uint256" },
+    { name: "baseGas", type: "uint256" },
+    { name: "gasPrice", type: "uint256" },
+    { name: "gasToken", type: "address" },
+    { name: "refundReceiver", type: "address" },
+    { name: "nonce", type: "uint256" },
+  ],
+};
+
+function safeTypedData() {
+  return {
+    domain: { chainId: 6714, verifyingContract: multisig },
+    types: SAFE_TYPES,
+    message: {
+      to: safeTx.to,
+      value: safeTx.value,
+      data: safeTx.data,
+      operation: 0,
+      safeTxGas: 0,
+      baseGas: 0,
+      gasPrice: 0,
+      gasToken: ZERO,
+      refundReceiver: ZERO,
+      nonce: safeTx.nonce,
+    },
+  };
 }
 
-/** 单一主按钮的状态机：计算中 → 批准 → 等待他人 → 执行 */
+/** 校验并去重文本框里的签名，按 owner 地址升序返回 */
+function collectSignatures() {
+  if (!safeTx) return [];
+  const lines = ($("sfSigIn").value || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const mine = $("sfSigOut").value.trim();
+  if (mine) lines.push(mine);
+
+  const td = safeTypedData();
+  const byOwner = new Map();
+  for (const sig of lines) {
+    try {
+      const owner = ethers.verifyTypedData(td.domain, td.types, td.message, sig);
+      if (!safeOwners.some((o) => o.toLowerCase() === owner.toLowerCase())) continue;
+      const key = owner.toLowerCase();
+      if (!byOwner.has(key)) byOwner.set(key, { owner, sig });
+    } catch {}
+  }
+  return [...byOwner.values()].sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
+}
+
+function refreshSignatureStatus() {
+  const sigs = collectSignatures();
+  safeApprovedCount = sigs.length;
+  $("sfApprovals").innerHTML =
+    `已收集签名 ${sigs.length} / ${safeThreshold}：<br>` +
+    (sigs.length ? sigs.map((s) => `✅ ${s.owner}`).join("<br>") : "尚未收集到任何签名");
+  updateSafeMainButton();
+}
+
 function updateSafeMainButton() {
   const btn = $("sfMain");
   if (!btn) return;
@@ -2094,41 +2136,50 @@ function updateSafeMainButton() {
     btn.textContent = "执行中…";
     return;
   }
-  if (safeApprovedCount >= Number(safeThreshold)) {
-    btn.disabled = false;
-    btn.textContent = "执行（已达阈值）";
-    return;
-  }
-  if (safeMyApproved) {
-    btn.disabled = true;
-    btn.textContent = `已批准，等待其他所有者（${safeApprovedCount}/${safeThreshold}）`;
-    return;
-  }
-  btn.disabled = false;
-  btn.textContent = "批准此交易";
+  const need = Number(safeThreshold);
+  const enough = safeApprovedCount >= need;
+  btn.disabled = !enough;
+  btn.textContent = enough
+    ? `执行（${safeApprovedCount}/${need} 签名）`
+    : `还差 ${need - safeApprovedCount} 个签名`;
 }
 
-async function safeApprove() {
-  if (!safeTx || !signer) {
+async function safeSign() {
+  if (!safeTx) {
     toast("请先计算哈希");
     return;
   }
-  if (!(await precheck())) return;
-  const write = new ethers.Contract(multisig, SAFE_ABI, signer);
+  if (!signer) {
+    toast("请先连接钱包");
+    return;
+  }
   try {
-    toast("请在钱包中确认…", 8000);
-    const tx = await write.approveHash(safeTx.hash);
-    await tx.wait();
-    toast("已批准");
-    await refreshSafeApprovals();
+    const td = safeTypedData();
+    toast("请在钱包中确认签名（不花 gas）…", 9000);
+    const sig = await signer.signTypedData(td.domain, td.types, td.message);
+    $("sfSigOut").value = sig;
+    const box = $("sfSigIn");
+    if (!box.value.includes(sig)) {
+      box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + sig;
+    }
+    refreshSignatureStatus();
+    toast("签名完成，复制发给其他所有者收集");
   } catch (err) {
-    toast("批准失败：" + (err.shortMessage || err.message), 6000); logError("批准", err);
+    toast("签名失败：" + (err.shortMessage || err.message), 7000);
+    logError("签名", err);
   }
 }
 
 async function safeExec() {
   if (!safeTx || !signer) return;
   if (!(await precheck())) return;
+
+  const sigs = collectSignatures();
+  if (sigs.length < Number(safeThreshold)) {
+    toast("签名数量不足");
+    return;
+  }
+
   safeExecuting = true;
   updateSafeMainButton();
   const rp = new ethers.JsonRpcProvider(RPC);
@@ -2142,21 +2193,7 @@ async function safeExec() {
       return;
     }
 
-    const approved = [];
-    for (const o of safeOwners) {
-      const v = await read.approvedHashes(o, safeTx.hash);
-      if (v === 1n) approved.push(o);
-    }
-    if (approved.length < Number(safeThreshold)) {
-      toast("批准数量不足");
-      return;
-    }
-
-    approved.sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1));
-    const parts = approved.map((o) =>
-      ethers.concat([ethers.zeroPadValue(o, 32), ethers.zeroPadValue("0x", 32), "0x01"])
-    );
-    const signatures = ethers.concat(parts);
+    const signatures = ethers.concat(sigs.map((s) => s.sig));
 
     toast("请在钱包中确认执行…", 8000);
     const tx = await write.execTransaction(
@@ -2174,7 +2211,8 @@ async function safeExec() {
     toast("已执行");
     await load();
   } catch (err) {
-    toast("执行失败：" + (err.shortMessage || err.message), 6000); logError("执行", err);
+    toast("执行失败：" + (err.shortMessage || err.message), 6000);
+    logError("执行", err);
   } finally {
     safeExecuting = false;
     updateSafeMainButton();
@@ -2324,12 +2362,10 @@ $("btnSelfCheck").onclick = selfCheck;
 
 /* 社区 */
 $("cmRefresh").onclick = loadCommunityData;
-$("sfHash").onclick = safeComputeHash;
-$("sfMain").onclick = async () => {
-  if (!safeTx) return;
-  if (safeApprovedCount >= Number(safeThreshold)) await safeExec();
-  else await safeApprove();
-};
+$("sfHash").onclick = () => safeComputeHash(false);
+$("sfSign").onclick = safeSign;
+$("sfMain").onclick = safeExec;
+$("sfSigIn").addEventListener("input", refreshSignatureStatus);
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
   if (!v) return;
@@ -2366,6 +2402,7 @@ if (window.ethereum) {
   window.ethereum.on?.("accountsChanged", () => location.reload());
   window.ethereum.on?.("chainChanged", () => location.reload());
 }
+
 
 
 
