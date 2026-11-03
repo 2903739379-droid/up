@@ -146,6 +146,7 @@
 
     <div class="small" id="diag" style="margin-top:10px">—</div>
     <button class="ghost" id="btnSelfCheck" style="width:100%;margin-top:8px;font-size:12px;padding:8px">运行自检（把结果发给我）</button>
+    <div class="small" id="errLog" style="margin-top:8px;color:#991b1b;white-space:pre-wrap"></div>
     <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
 
     <div class="small" id="multisigInfo" style="margin-top:8px"></div>
@@ -442,6 +443,24 @@ const ABI = [
 
 const $ = (id) => document.getElementById(id);
 
+/* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
+const errLines = [];
+function logError(where, err) {
+  const msg = (err && (err.shortMessage || err.message)) || String(err);
+  const time = new Date().toLocaleTimeString();
+  errLines.unshift(`[${time}] ${where}: ${msg}`);
+  if (errLines.length > 6) errLines.pop();
+  const box = $("errLog");
+  if (box) box.textContent = errLines.join("\n");
+}
+
+window.addEventListener("unhandledrejection", (e) => {
+  logError("未捕获的异步错误", e.reason);
+});
+window.addEventListener("error", (e) => {
+  logError("脚本错误", e.message);
+});
+
 /* 如果 ethers 没加载（例如上传时丢了 vendor 目录），给出明确提示，而不是只报错。 */
 if (typeof ethers === "undefined") {
   const box = document.createElement("div");
@@ -720,7 +739,7 @@ async function act(fn) {
     toast("已上链：" + rc.hash.slice(0, 10) + "…");
     await load();
   } catch (err) {
-    toast(friendly(err), 6000);
+    toast(friendly(err), 6000); logError("操作", err);
   }
 }
 
@@ -798,7 +817,7 @@ async function submitTx() {
     $("data").value = "";
     await load();
   } catch (err) {
-    toast(friendly(err), 7000);
+    toast(friendly(err), 7000); logError("提交交易", err);
   } finally {
     btn.disabled = false;
     btn.textContent = "提交（自动第 1 个确认）";
@@ -1343,8 +1362,9 @@ function fillTx(target, data, label) {
     $("sfTo").value = target;
     $("sfValue").value = "0";
     $("sfData").value = data;
-    toast("已填入 Safe 表单：" + label + "，接着点「计算交易哈希」");
+    toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => safeComputeHash(), 350);
     return;
   }
   $("to").value = target;
@@ -1947,7 +1967,7 @@ async function safeComputeHash() {
     $("sfApprove").disabled = false;
     await refreshSafeApprovals();
   } catch (err) {
-    toast("计算失败：" + (err.shortMessage || err.message), 6000);
+    toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
 }
 
@@ -1985,7 +2005,7 @@ async function safeApprove() {
     toast("已批准");
     await refreshSafeApprovals();
   } catch (err) {
-    toast("批准失败：" + (err.shortMessage || err.message), 6000);
+    toast("批准失败：" + (err.shortMessage || err.message), 6000); logError("批准", err);
   }
 }
 
@@ -2035,7 +2055,7 @@ async function safeExec() {
     toast("已执行");
     await load();
   } catch (err) {
-    toast("执行失败：" + (err.shortMessage || err.message), 6000);
+    toast("执行失败：" + (err.shortMessage || err.message), 6000); logError("执行", err);
   }
 }
 
@@ -2220,6 +2240,7 @@ if (window.ethereum) {
   window.ethereum.on?.("accountsChanged", () => location.reload());
   window.ethereum.on?.("chainChanged", () => location.reload());
 }
+
 
 </script>
 </body>
