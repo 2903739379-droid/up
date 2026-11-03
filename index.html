@@ -545,6 +545,15 @@ async function load() {
   if (kind === "safe") {
     safeMode = true;
     await loadSafeData(readProvider);
+    // Safe 模式下这些按钮用于生成交易，不做权限禁用（真正执行要过 Safe 的批准）
+    ["assetApprove", "assetRevoke", "assetMint", "tkSend", "swApprove", "swSwap", "pwApprove", "pwGo"].forEach((id) => {
+      if ($(id)) $(id).disabled = false;
+    });
+    loadAssetData();
+    loadSwapBalances();
+    loadPowerData();
+    loadCommunityData();
+    loadHelixData();
     return;
   }
   safeMode = false;
@@ -1249,6 +1258,14 @@ const fmt4 = (v) =>
   Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 function fillTx(target, data, label) {
+  if (safeMode) {
+    $("sfTo").value = target;
+    $("sfValue").value = "0";
+    $("sfData").value = data;
+    toast("已填入 Safe 表单：" + label + "，接着点「计算交易哈希」");
+    $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   $("to").value = target;
   $("value").value = "0";
   $("data").value = data;
@@ -1672,17 +1689,15 @@ async function detectKind(addr, rp) {
 function setPanelsForKind(kind) {
   const safe = kind === "safe";
   $("safeSection").style.display = safe ? "block" : "none";
-  const custom = ["assetSection", "powerPage", "swapPage", "communityPage", "tokenSection", "newSection", "helixSection", "dataSection", "txSection"];
-  for (const id of custom) {
-    if (safe) $(id).style.display = "none";
-  }
-  if (safe) {
-    for (const id of ["assetSection", "powerPage", "swapPage", "communityPage", "tokenSection", "newSection", "helixSection", "dataSection"]) {
-      if ($(id)) $(id).dataset.hiddenBySafe = "1";
-    }
-  } else {
-    for (const id of custom) if ($(id)) delete $(id).dataset.hiddenBySafe;
-  }
+  if (!safe) return;
+  // Safe 模式：同样展示 DApp 操作面板
+  ["assetSection", "powerPage", "swapPage", "communityPage", "tokenSection", "helixSection", "dataSection"].forEach((id) => {
+    if ($(id)) $(id).style.display = "block";
+  });
+  // 只隐藏「自建合约专用」的两个面板
+  ["newSection", "txSection"].forEach((id) => {
+    if ($(id)) $(id).style.display = "none";
+  });
 }
 
 async function loadSafeData(rp) {
