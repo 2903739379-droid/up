@@ -62,7 +62,7 @@
   header{background:transparent;color:var(--hx-ink);padding:22px 18px 6px}
   header h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--hx-ink)}
   header p{color:var(--hx-muted);font-size:12px;margin-top:4px}
-  main{padding:6px 12px 64px;max-width:780px}
+  main{padding:6px 12px 64px;max-width:780px;margin:0 auto}
   .card{background:#fff;border:0;border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:0 8px 26px rgba(76,29,149,.06)}
   .card strong{color:var(--hx-ink)}
   label{color:var(--hx-muted);font-size:12px;margin:12px 0 6px}
@@ -102,6 +102,7 @@
 </style>
 </head>
 <body>
+<div id="boot" style="position:fixed;left:8px;bottom:8px;z-index:9999;background:#334155;color:#fff;font-size:11px;padding:6px 10px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.2)">脚本加载中…</div>
 <header>
   <h1>Anubis 多签控制台 <span id="ver" style="font-size:12px;font-weight:600;color:#60a5fa;vertical-align:middle">v2 · 4/3</span><span id="build" style="font-size:11px;font-weight:600;color:#94a3b8;margin-left:8px"></span></h1>
   <p id="status">未连接钱包</p>
@@ -265,7 +266,7 @@
   <section class="card" id="helixSection" style="display:none">
     <strong style="font-size:14px">渦輪 · veAiLGNS · 社區</strong>
     <div class="small" style="margin-top:4px">
-      資產、算力、兌換已有专属页面，这里只放其余操作。点「生成」会填进下方提交框，仍需 3 人确认。
+      資產、算力、兌換已有专属页面，这里只放其余操作。点「生成」会自动填入对应表单：自建多签填下方提交框，Safe 多签填上方 Safe 表单并算好哈希，然后继续签名。
     </div>
     <div id="helixList" style="margin-top:12px"></div>
   </section>
@@ -448,8 +449,23 @@ const ABI = [
 
 const $ = (id) => document.getElementById(id);
 
+/* localStorage 兜底：沙箱预览 iframe、隐私模式或禁用存储时，它可能是 null 或直接抛错。
+   不兜住的话初始化最后一步会抛异常，整段脚本中断：页面能看见，但所有按钮都没反应。 */
+function storageGet(key) {
+  try {
+    return window.localStorage ? window.localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+function storageSet(key, value) {
+  try {
+    if (window.localStorage) window.localStorage.setItem(key, value);
+  } catch {}
+}
+
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v11 · 2026-11-04 04:35";
+const BUILD = "v13 · 2026-11-04 05:45";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -488,6 +504,11 @@ function fatal(msg) {
 
 /* 如果 ethers 没加载（例如上传时丢了 vendor 目录），给出明确提示，而不是只报错。 */
 if (typeof ethers === "undefined") {
+  const boot = document.getElementById("boot");
+  if (boot) {
+    boot.textContent = "库加载失败（ethers 缺失）";
+    boot.style.background = "#991b1b";
+  }
   const box = document.createElement("div");
   box.style.cssText =
     "margin:12px;padding:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;font-size:13px;line-height:1.6";
@@ -587,13 +608,13 @@ async function switchChain() {
 }
 
 async function load() {
-  const input = ($("multisig").value || localStorage.getItem("anubis.multisig") || "").trim();
+  const input = ($("multisig").value || storageGet("anubis.multisig") || "").trim();
   if (!ethers.isAddress(input)) {
     if (input) toast("多签地址格式不正确");
     return;
   }
   multisig = ethers.getAddress(input);
-  localStorage.setItem("anubis.multisig", multisig);
+  storageSet("anubis.multisig", multisig);
   $("multisig").value = multisig;
 
   const readProvider = provider || new ethers.JsonRpcProvider(RPC);
@@ -799,9 +820,23 @@ async function submitTx() {
     if (realKind === "safe") {
       safeMode = true;
       setPanelsForKind("safe");
+      // 直接把当前表单内容搬到上方 Safe 表单，并算好哈希，
+      // 让用户能继续「用钱包签名」，而不是点了提交什么都没发生。
+      const to = ($("to").value || "").trim();
+      const val = ($("value").value || "0").trim();
+      const data = ($("data").value || "0x").trim() || "0x";
       $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
-      toast("这是 Safe 多签，不能用「提交」按钮；请用上方 Safe 操作区：计算哈希 → 批准 → 执行", 10000);
-      logError("提交交易", new Error("地址是 Safe，已自动切换到 Safe 模式，请重新操作"));
+      if (ethers.isAddress(to)) {
+        $("sfTo").value = to;
+        $("sfValue").value = val;
+        $("sfData").value = data;
+        $("newSection").style.display = "none";
+        toast("这是 Safe 多签：已把 calldata 转入上方 Safe 表单并计算哈希，请点「用钱包签名」", 12000);
+        await safeComputeHash(false);
+      } else {
+        toast("这是 Safe 多签，不能用「提交」按钮；请用上方 Safe 操作区：填目标 → 计算哈希 → 用钱包签名", 12000);
+      }
+      logError("提交交易", new Error("地址是 Safe，已自动切换到 Safe 签名流程"));
       return;
     }
   } catch {}
@@ -864,7 +899,7 @@ async function submitTx() {
   }
 }
 
-function makeCalldata() {
+async function makeCalldata() {
   const sig = ($("sig").value || "").trim();
   const argsText = ($("sigArgs").value || "").trim();
 
@@ -889,7 +924,25 @@ function makeCalldata() {
       types[i].endsWith("]") || types[i].startsWith("tuple") ? JSON.parse(v) : v
     );
 
-    $("data").value = iface.encodeFunctionData(frag, args);
+    const data = iface.encodeFunctionData(frag, args);
+
+    // Safe 模式下「发起新交易」表单是隐藏的，直接写进去等于白生成。
+    // 这里把 calldata 填到上方 Safe 表单，并尽量自动算好哈希。
+    if (safeMode || currentKind === "safe") {
+      safeMode = true;
+      $("sfData").value = data;
+      $("newSection").style.display = "none";
+      $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (ethers.isAddress(($("sfTo").value || "").trim())) {
+        toast("已生成 calldata，正在计算 Safe 哈希…");
+        await safeComputeHash(false);
+      } else {
+        toast("calldata 已填入 Safe 表单；请先填目标地址，再点「重新计算哈希」", 9000);
+      }
+      return;
+    }
+
+    $("data").value = data;
     toast("已生成 calldata 并填入下方");
     $("data").scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (err) {
@@ -1279,12 +1332,9 @@ async function fillFromPreset(item, inputs) {
   const args = await item.args(values);
   const data = iface.encodeFunctionData(fragment, args);
 
-  $("to").value = item.target;
-  $("value").value = "0";
-  $("data").value = data;
-  $("newSection").style.display = "block";
-  toast("已生成：" + item.title + "，检查后提交");
-  $("newSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  // 必须走 fillTx：Safe 多签要填到上方 Safe 表单并算哈希，
+  // 直接写「发起新交易」表单会导致「提交」被拦下、也拿不到签名流程。
+  await fillTx(item.target, data, item.title);
 }
 
 async function loadHelixData() {
@@ -1413,10 +1463,10 @@ let previewTimer = null;
 const fmt4 = (v) =>
   Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
-async function fillTx(target, data, label) {
+async function fillTx(target, data, label, valueText = "0") {
   if (!multisig) {
     toast("请先载入多签地址");
-    return;
+    return false;
   }
 
   // 每次点击都实时检测合约类型，避免用旧状态走错分支
@@ -1438,21 +1488,27 @@ async function fillTx(target, data, label) {
   if (kind === "safe") {
     safeMode = true;
     $("sfTo").value = target;
-    $("sfValue").value = "0";
+    $("sfValue").value = valueText;
     $("sfData").value = data;
     $("newSection").style.display = "none";
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
     await safeComputeHash(false);
-    return;
+    return true;
+  }
+
+  if (kind === "none" || kind === "unknown") {
+    toast("多签地址无法识别，请检查地址或网络", 9000);
+    return false;
   }
 
   $("to").value = target;
-  $("value").value = "0";
+  $("value").value = valueText;
   $("data").value = data;
   $("newSection").style.display = "block";
   toast("已生成：" + label + "，核对后提交");
   $("newSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
 }
 
 async function loadAssetData() {
@@ -2388,9 +2444,34 @@ $("btnCopy").onclick = async () => {
   }
 };
 
-$("multisig").value = localStorage.getItem("anubis.multisig") || "";
+$("multisig").value = storageGet("anubis.multisig") || "";
 
 // 支持 ?ms=0x... 直接打开某个多签（方便分享链接与截图核对）
 try {
   const deep = new URLSearchParams(location.search).get("ms");
-  if (de
+  if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
+} catch {}
+
+renderHelix();
+if ($("build")) $("build").textContent = BUILD;
+const bootEl = document.getElementById("boot");
+if (bootEl) {
+  bootEl.textContent = "已启动 " + BUILD;
+  bootEl.style.background = "#065f46";
+}
+if ($("multisig").value) load();
+
+if (window.ethereum) {
+  window.ethereum.on?.("accountsChanged", () => location.reload());
+  window.ethereum.on?.("chainChanged", () => location.reload());
+}
+
+
+
+
+
+
+
+</script>
+</body>
+</html>
