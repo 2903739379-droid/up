@@ -417,7 +417,7 @@
   }
 </script>
 <script>
-/* Anubis 多签控制台 —— 手机/电脑通用，无需后端 */
+﻿/* Anubis 多签控制台 —— 手机/电脑通用，无需后端 */
 
 const CHAIN_ID_HEX = "0x1a3a"; // 6714
 const RPC = "https://rpc.anubispace.org";
@@ -439,7 +439,7 @@ const ABI = [
 const $ = (id) => document.getElementById(id);
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v7 · 2026-11-04 03:45";
+const BUILD = "v8 · 2026-11-04 03:55";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -1387,9 +1387,29 @@ let previewTimer = null;
 const fmt4 = (v) =>
   Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
-function fillTx(target, data, label) {
-  // 以「当前地址的真实类型」为准，避免状态错位
-  if (currentKind === "safe" || safeMode) {
+async function fillTx(target, data, label) {
+  if (!multisig) {
+    toast("请先载入多签地址");
+    return;
+  }
+
+  // 每次点击都实时检测合约类型，避免用旧状态走错分支
+  let kind = currentKind;
+  try {
+    const rp = new ethers.JsonRpcProvider(RPC);
+    kind = await detectKind(multisig, rp);
+    currentKind = kind;
+    if (kind === "safe") {
+      safeMode = true;
+      setPanelsForKind("safe");
+      await loadSafeData(rp);
+    } else if (kind === "custom") {
+      safeMode = false;
+      setPanelsForKind("custom");
+    }
+  } catch {}
+
+  if (kind === "safe") {
     safeMode = true;
     $("sfTo").value = target;
     $("sfValue").value = "0";
@@ -1397,10 +1417,10 @@ function fillTx(target, data, label) {
     $("newSection").style.display = "none";
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
-    // 自动算哈希；批准由用户点唯一的主按钮完成
-    setTimeout(() => safeComputeHash(false), 350);
+    await safeComputeHash(false);
     return;
   }
+
   $("to").value = target;
   $("value").value = "0";
   $("data").value = data;
@@ -2330,6 +2350,7 @@ if (window.ethereum) {
   window.ethereum.on?.("accountsChanged", () => location.reload());
   window.ethereum.on?.("chainChanged", () => location.reload());
 }
+
 
 
 </script>
