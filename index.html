@@ -676,8 +676,16 @@ async function act(fn) {
     return;
   }
   try {
+    if (provider) {
+      const ok = await checkChain().catch(() => true);
+      if (!ok) {
+        toast("当前钱包不在 Anubis 网络（6714），请先切换网络", 8000);
+        return;
+      }
+    }
     toast("请在钱包中确认这笔交易…", 8000);
     const tx = await fn(c);
+    toast("交易已发送：" + tx.hash.slice(0, 14) + "…", 8000);
     const rc = await tx.wait();
     toast("已上链：" + rc.hash.slice(0, 10) + "…");
     await load();
@@ -735,9 +743,23 @@ async function submitTx() {
     return;
   }
 
+  // 网络校验：不在 Anubis 就不发交易
+  if (provider) {
+    const ok = await checkChain().catch(() => true);
+    if (!ok) {
+      toast("当前钱包不在 Anubis 网络（6714），请先切换网络再提交", 8000);
+      return;
+    }
+  }
+
+  const btn = $("btnSubmit");
   try {
+    btn.disabled = true;
+    btn.textContent = "等待钱包确认…";
     toast("请在钱包中确认…", 8000);
     const tx = await c.submitTransaction(to, value, data);
+    btn.textContent = "已发送，等待上链…";
+    toast("交易已发送：" + tx.hash.slice(0, 14) + "…", 8000);
     await tx.wait();
     toast("已提交，自动完成第 1 个确认");
     $("to").value = "";
@@ -745,7 +767,10 @@ async function submitTx() {
     $("data").value = "";
     await load();
   } catch (err) {
-    toast(friendly(err), 6000);
+    toast(friendly(err), 7000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "提交（自动第 1 个确认）";
   }
 }
 
