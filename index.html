@@ -185,7 +185,9 @@
     <div class="small" id="sfHashOut" style="margin-top:12px">—</div>
     <div class="small" id="sfApprovals" style="margin-top:6px"></div>
 
-    <div class="row" style="margin-top:14px;gap:8px">
+    <button class="ghost" id="sfChainApprove" style="width:100%;margin-top:14px" disabled>链上批准（写到链上，其他所有者可见）</button>
+
+    <div class="row" style="margin-top:10px;gap:8px">
       <button class="grow ghost" id="sfSign" disabled>用钱包签名</button>
       <button class="grow" id="sfMain" disabled>执行</button>
     </div>
@@ -198,7 +200,7 @@
 
     <button class="ghost" id="sfHash" style="width:100%;margin-top:8px;font-size:12px;padding:8px">重新计算哈希</button>
     <div class="small" style="margin-top:8px">
-      点面板里的操作按钮会自动算好哈希。然后点「用钱包签名」，把签名发给其他人收集；凑够阈值后点「执行」。
+      「链上批准」会在合约里记一笔，其他所有者刷新后就能看到并计入阈值，重新打开页面也不会丢；「用钱包签名」只在本机生成，需要你复制发给对方，刷新会丢。凑够阈值后点「执行」。
     </div>
   </section>
 
@@ -465,7 +467,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v13 · 2026-11-04 05:45";
+const BUILD = "v14 · 2026-11-04 06:13";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -626,7 +628,7 @@ async function load() {
   await updateDiag(kind, readProvider);
   if (kind === "safe") {
     safeMode = true;
-    await loadSafeData(readProvider);
+    await loadSafeData(readProvider, true);
     // Safe 模式下这些按钮用于生成交易，不做权限禁用（真正执行要过 Safe 的批准）
     ["assetApprove", "assetRevoke", "assetMint", "tkSend", "swApprove", "swSwap", "pwApprove", "pwGo"].forEach((id) => {
       if ($(id)) $(id).disabled = false;
@@ -1915,6 +1917,7 @@ let safeTx = null; // { hash, to, value, data, nonce }
 let safeOwners = [];
 let safeThreshold = 0n;
 let safeApprovedCount = 0;
+let safeOnChainOwners = [];
 let safeMyApproved = false;
 let safeExecuting = false;
 let forcedMode = "auto";
@@ -2035,7 +2038,7 @@ function setPanelsForKind(kind) {
   });
 }
 
-async function loadSafeData(rp) {
+async function loadSafeData(rp, restoreDraft = false) {
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   try {
     const [owners, threshold, nonce, balance] = await Promise.all([
@@ -2055,16 +2058,23 @@ async function loadSafeData(rp) {
       owners.map((o, i) => `${i + 1}. ${o}${o.toLowerCase() === (account || "").toLowerCase() ? " ← 你" : ""}`).join("<br>");
 
     safeTx = null;
+    safeOnChainOwners = [];
     $("sfHashOut").textContent = "—";
     $("sfApprovals").textContent = "";
     safeApprovedCount = 0;
     safeMyApproved = false;
+    $("sfChainApprove").disabled = true;
     updateSafeMainButton();
 
     // 覆盖上方「多签地址」卡片里可能残留的上一个合约信息
     $("multisigInfo").innerHTML =
       `Safe 合约 · 阈值 <b>${threshold} / ${owners.length}</b> · Nonce <b>${nonce}</b><br>` +
       `余额 ${ethers.formatEther(balance)} DAI · 下方为 Safe 操作区`;
+
+    // 重新打开页面时恢复上次没执行的 Safe 交易，并重新算哈希/拉取链上批准
+    if (restoreDraft && ethers.isAddress(($("sfTo").value || "").trim())) {
+      await safeComputeHash(false);
+    }
   } catch (err) {
     $("sfThreshold").textContent = "读取失败";
   }
@@ -2104,11 +2114,21 @@ async function safeComputeHash(autoApprove) {
       ZERO,       // refundReceiver
       nonce       // nonce
     );
+    const hashChanged = !safeTx || safeTx.hash !== hash;
     safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
     $("sfHashOut").textContent = "交易哈希：" + hash;
-    $("sfSigOut").value = "";
-    refreshSignatureStatus();
+    if (hashChanged) {
+      $("sfSigOut").value = "";
+      $("sfSigIn").value = "";
+    }
+    // 记住这笔待执行的交易：重新打开页面后可以恢复并继续批准
+    storageSet(
+      "anubis.safeDraft",
+      JSON.stringify({ to: safeTx.to, value: String($("sfValue").value || "0"), data })
+    );
     $("sfSign").disabled = false;
+    $("sfChainApprove").disabled = false;
+    await refreshSignatureStatus();
   } catch (err) {
     toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
@@ -2171,13 +2191,81 @@ function collectSignatures() {
   return [...byOwner.values()].sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
 }
 
-function refreshSignatureStatus() {
-  const sigs = collectSignatures();
-  safeApprovedCount = sigs.length;
+/** 链上批准对应的「预验证签名」：r=owner，s=0，v=1 */
+function preValidatedSignature(owner) {
+  return ethers.concat([ethers.zeroPadValue(ethers.getAddress(owner), 32), ethers.ZeroHash, "0x01"]);
+}
+
+/** 本地离线签名 + 链上批准，按 owner 升序合并（Safe 要求严格升序） */
+function combinedApprovals() {
+  const byOwner = new Map();
+  for (const s of collectSignatures()) {
+    byOwner.set(s.owner.toLowerCase(), { owner: s.owner, sig: s.sig, source: "离线签名" });
+  }
+  for (const o of safeOnChainOwners) {
+    const key = o.toLowerCase();
+    if (!byOwner.has(key)) {
+      byOwner.set(key, { owner: o, sig: preValidatedSignature(o), source: "链上批准" });
+    }
+  }
+  return [...byOwner.values()].sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
+}
+
+async function refreshSignatureStatus() {
+  // 拉取链上批准：其他所有者「链上批准」后，这里所有人刷新都能看到
+  safeOnChainOwners = [];
+  if (safeTx && safeOwners.length) {
+    try {
+      const rp = new ethers.JsonRpcProvider(RPC);
+      const read = new ethers.Contract(multisig, SAFE_ABI, rp);
+      const flags = await Promise.all(
+        safeOwners.map((o) => read.approvedHashes(o, safeTx.hash).catch(() => 0n))
+      );
+      safeOnChainOwners = safeOwners.filter((o, i) => flags[i] > 0n);
+    } catch {}
+  }
+
+  const list = combinedApprovals();
+  safeApprovedCount = list.length;
   $("sfApprovals").innerHTML =
-    `已收集签名 ${sigs.length} / ${safeThreshold}：<br>` +
-    (sigs.length ? sigs.map((s) => `✅ ${s.owner}`).join("<br>") : "尚未收集到任何签名");
+    `已生效批准 ${list.length} / ${safeThreshold}：<br>` +
+    (list.length
+      ? list.map((e) => `✅ ${e.owner}（${e.source}）`).join("<br>")
+      : "还没有任何批准");
   updateSafeMainButton();
+}
+
+async function safeApproveOnChain() {
+  if (!safeTx) {
+    toast("请先计算哈希");
+    return;
+  }
+  if (!signer) {
+    toast("请先连接钱包");
+    return;
+  }
+  if (!(await precheck())) return;
+
+  const btn = $("sfChainApprove");
+  const write = new ethers.Contract(multisig, SAFE_ABI, signer);
+  try {
+    btn.disabled = true;
+    btn.textContent = "等待钱包确认…";
+    toast("链上批准会发一笔交易（花少量 gas），成功后其他所有者刷新即可看到", 9000);
+    const tx = await write.approveHash(safeTx.hash);
+    btn.textContent = "已发送，等待上链…";
+    await tx.wait();
+    toast("链上批准成功，刷新页面也会保留");
+    await refreshSignatureStatus();
+  } catch (err) {
+    toast(friendly(err), 7000);
+    logError("链上批准", err);
+  } finally {
+    if (safeTx) {
+      btn.disabled = false;
+      btn.textContent = "链上批准（写到链上，其他所有者可见）";
+    }
+  }
 }
 
 function updateSafeMainButton() {
@@ -2197,8 +2285,8 @@ function updateSafeMainButton() {
   const enough = safeApprovedCount >= need;
   btn.disabled = !enough;
   btn.textContent = enough
-    ? `执行（${safeApprovedCount}/${need} 签名）`
-    : `还差 ${need - safeApprovedCount} 个签名`;
+    ? `执行（${safeApprovedCount}/${need} 批准）`
+    : `还差 ${need - safeApprovedCount} 个批准`;
 }
 
 async function safeSign() {
@@ -2231,9 +2319,9 @@ async function safeExec() {
   if (!safeTx || !signer) return;
   if (!(await precheck())) return;
 
-  const sigs = collectSignatures();
-  if (sigs.length < Number(safeThreshold)) {
-    toast("签名数量不足");
+  const approvals = combinedApprovals();
+  if (approvals.length < Number(safeThreshold)) {
+    toast(`还差 ${Number(safeThreshold) - approvals.length} 个批准`);
     return;
   }
 
@@ -2250,7 +2338,8 @@ async function safeExec() {
       return;
     }
 
-    const signatures = ethers.concat(sigs.map((s) => s.sig));
+    // 离线签名 + 链上批准（预验证签名）一起打包
+    const signatures = ethers.concat(approvals.map((a) => a.sig));
 
     toast("请在钱包中确认执行…", 8000);
     const tx = await write.execTransaction(
@@ -2266,6 +2355,7 @@ async function safeExec() {
       signatures    // signatures
     );
     await tx.wait();
+    storageSet("anubis.safeDraft", "");
     toast("已执行");
     await load();
   } catch (err) {
@@ -2423,6 +2513,7 @@ $("cmRefresh").onclick = loadCommunityData;
 $("sfHash").onclick = () => safeComputeHash(false);
 $("sfSign").onclick = safeSign;
 $("sfMain").onclick = safeExec;
+$("sfChainApprove").onclick = safeApproveOnChain;
 $("sfSigIn").addEventListener("input", refreshSignatureStatus);
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
@@ -2450,6 +2541,16 @@ $("multisig").value = storageGet("anubis.multisig") || "";
 try {
   const deep = new URLSearchParams(location.search).get("ms");
   if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
+} catch {}
+
+// 恢复上次未执行的 Safe 交易，重新打开页面后仍能继续查看/批准
+try {
+  const draft = JSON.parse(storageGet("anubis.safeDraft") || "null");
+  if (draft && ethers.isAddress(draft.to || "") && typeof draft.data === "string") {
+    $("sfTo").value = draft.to;
+    $("sfValue").value = draft.value || "0";
+    $("sfData").value = draft.data;
+  }
 } catch {}
 
 renderHelix();
