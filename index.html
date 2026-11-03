@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F2F4FF">
 <title>Anubis 多签控制台</title>
 <style>
   :root{
@@ -60,7 +61,7 @@
   }
   body{background:var(--hx-bg);color:var(--hx-ink);-webkit-font-smoothing:antialiased}
   header{background:transparent;color:var(--hx-ink);padding:22px 18px 6px}
-  header h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--hx-ink)}
+  header h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--hx-ink);text-wrap:balance}
   header p{color:var(--hx-muted);font-size:12px;margin-top:4px}
   main{padding:6px 12px 64px;max-width:780px;margin:0 auto}
   .card{background:#fff;border:0;border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:0 8px 26px rgba(76,29,149,.06)}
@@ -68,7 +69,7 @@
   label{color:var(--hx-muted);font-size:12px;margin:12px 0 6px}
   input,textarea,select{background:var(--hx-soft);border:1px solid transparent;border-radius:14px;padding:12px 14px;font-size:15px;color:var(--hx-ink)}
   input:focus,textarea:focus,select:focus{outline:none;background:#fff;border-color:#C4B5FD;box-shadow:0 0 0 4px rgba(124,58,237,.08)}
-  button{padding:13px 16px;border-radius:16px;font-size:15px;font-weight:700;background:linear-gradient(135deg,var(--hx-primary),var(--hx-primary-2));box-shadow:0 8px 20px rgba(124,58,237,.22);transition:transform .08s ease,box-shadow .15s ease}
+  button{padding:13px 16px;border-radius:16px;font-size:15px;font-weight:700;background:linear-gradient(135deg,var(--hx-primary),var(--hx-primary-2));box-shadow:0 8px 20px rgba(124,58,237,.22);transition:transform .08s ease,box-shadow .15s ease;touch-action:manipulation}
   button:active{transform:translateY(1px)}
   button.ghost{background:#fff;color:var(--hx-primary);border:1.5px solid #DDD6FE;box-shadow:none}
   button.ok{background:linear-gradient(135deg,#10B981,#34D399);box-shadow:0 8px 20px rgba(16,185,129,.2)}
@@ -112,6 +113,18 @@
   details.adv>summary:after{content:"展开";font-weight:600;color:var(--hx-primary)}
   details.adv[open]>summary:after{content:"收起"}
   details.adv .small{margin-top:8px}
+
+  .tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:#EF4444;color:#fff;font-size:11px;font-weight:800}
+  .tab-count[hidden]{display:none}
+  button:focus-visible,.tab:focus-visible,summary:focus-visible{outline:3px solid rgba(124,58,237,.35);outline-offset:2px}
+  .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(23,21,40,.45);backdrop-filter:blur(4px);overscroll-behavior:contain}
+  .modal[hidden]{display:none}
+  .modal-card{width:100%;max-width:360px;background:#fff;border-radius:22px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal-card h2{margin:0;font-size:18px}
+  .modal-card p{margin:8px 0 18px}
+  @media (prefers-reduced-motion: reduce){
+    *{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+  }
 </style>
 </head>
 <body>
@@ -121,12 +134,13 @@
   <p id="status">未连接钱包</p>
 </header>
 
-<nav id="tabs">
+<nav id="tabs" aria-label="主导航">
   <button class="tab active" data-view="asset">資產</button>
   <button class="tab" data-view="power">算力</button>
-  <button class="tab" data-view="swap">兌換</button>
   <button class="tab" data-view="community">社區</button>
+  <button class="tab" data-view="helix">渦輪</button>
   <button class="tab" data-view="tx">交易</button>
+  <button class="tab" data-view="approve">批准<span id="approveCount" class="tab-count" hidden>0</span></button>
 </nav>
 
 <main>
@@ -140,31 +154,33 @@
       当前网络不是 Anubis（6714）。请切换网络后再操作。
       <div style="margin-top:8px"><button class="danger" id="btnSwitch">切换到 Anubis</button></div>
     </div>
+
     <div style="border-top:1px solid var(--hx-line);margin-top:14px;padding-top:12px">
-    <div class="row between">
-      <strong style="font-size:14px">多签地址</strong>
-      <span class="small">自动识别 Safe / 自建多签</span>
-    </div>
-    <input id="multisig" placeholder="0x... 部署后得到" style="margin-top:10px">
-    <div class="row" style="margin-top:10px">
-      <button class="grow" id="btnLoad">载入</button>
-      <button class="ghost" id="btnCopy">复制</button>
-    </div>
-
-    <div class="small" id="diag" style="margin-top:10px">—</div>
-    <div class="small" id="multisigInfo" style="margin-top:8px"></div>
-    <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
-
-    <details class="adv">
-      <summary>高级 / 诊断</summary>
-      <div class="row" style="gap:6px;margin-top:10px">
-        <button class="ghost mswitch" data-mode="auto" style="flex:1;font-size:12px;padding:8px 4px">自动识别</button>
-        <button class="ghost mswitch" data-mode="custom" style="flex:1;font-size:12px;padding:8px 4px">自建多签</button>
-        <button class="ghost mswitch" data-mode="safe" style="flex:1;font-size:12px;padding:8px 4px">Safe</button>
+      <div class="row between">
+        <strong style="font-size:14px">多签地址</strong>
+        <span class="small">自动识别 Safe / 自建多签</span>
       </div>
-      <button class="ghost" id="btnSelfCheck" style="width:100%;margin-top:8px;font-size:12px;padding:8px">运行自检</button>
-      <div class="small" id="errLog" style="margin-top:8px;color:#991b1b;white-space:pre-wrap"></div>
-    </details>
+      <label class="small" for="multisig" style="margin-top:10px">多签合约地址</label>
+      <input id="multisig" name="multisig" placeholder="0x… 部署后得到" autocomplete="off" spellcheck="false">
+      <div class="row" style="margin-top:10px">
+        <button class="grow" id="btnLoad">载入</button>
+        <button class="ghost" id="btnCopy">复制</button>
+      </div>
+
+      <div class="small" id="diag" style="margin-top:10px">—</div>
+      <div class="small" id="multisigInfo" style="margin-top:8px"></div>
+      <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
+
+      <details class="adv">
+        <summary>高级 / 诊断</summary>
+        <div class="row" style="gap:6px;margin-top:10px">
+          <button class="ghost mswitch" data-mode="auto" style="flex:1;font-size:12px;padding:8px 4px">自动识别</button>
+          <button class="ghost mswitch" data-mode="custom" style="flex:1;font-size:12px;padding:8px 4px">自建多签</button>
+          <button class="ghost mswitch" data-mode="safe" style="flex:1;font-size:12px;padding:8px 4px">Safe</button>
+        </div>
+        <button class="ghost" id="btnSelfCheck" style="width:100%;margin-top:8px;font-size:12px;padding:8px">运行自检</button>
+        <div class="small" id="errLog" style="margin-top:8px;color:#991b1b;white-space:pre-wrap"></div>
+      </details>
     </div>
   </section>
 
@@ -211,9 +227,9 @@
         </button>
       </div>
 
-      <label>銷毀數量</label>
+      <label for="assetAmount">銷毀數量</label>
       <div class="row">
-        <input id="assetAmount" value="0" inputmode="decimal" class="grow">
+        <input id="assetAmount" name="assetAmount" value="0" inputmode="decimal" class="grow" autocomplete="off">
         <button class="ghost" id="assetMax" style="white-space:nowrap">最大</button>
       </div>
       <div class="small" id="assetHint" style="margin-top:6px">可用 —　预计额度 —</div>
@@ -228,13 +244,13 @@
     <section class="card" id="tokenSection" style="display:none">
       <strong style="font-size:14px">代币转账</strong>
       <div class="small" style="margin-top:4px">输入 ERC-20 合约、收款地址和数量，直接生成转账交易。</div>
-      <label>代币合约地址</label>
-      <input id="tkAddr" placeholder="0x...">
-      <label>收款地址</label>
-      <input id="tkTo" placeholder="0x...">
-      <label>数量</label>
+      <label for="tkAddr">代币合约地址</label>
+      <input id="tkAddr" name="tokenAddress" placeholder="0x…" autocomplete="off" spellcheck="false">
+      <label for="tkTo">收款地址</label>
+      <input id="tkTo" name="tokenTo" placeholder="0x…" autocomplete="off" spellcheck="false">
+      <label for="tkAmt">数量</label>
       <div class="row">
-        <input id="tkAmt" class="grow" value="0" inputmode="decimal">
+        <input id="tkAmt" name="tokenAmount" class="grow" value="0" inputmode="decimal" autocomplete="off">
         <button class="ghost" id="tkMax" style="white-space:nowrap">全部</button>
       </div>
       <div class="small" id="tkInfo" style="margin-top:6px">—</div>
@@ -256,9 +272,9 @@
         <button class="ghost pmode" data-mode="ailgns" style="flex:1;font-size:13px">AiLGNS 銷毀</button>
       </div>
 
-      <label>參與數量</label>
+      <label for="pwAmt">參與數量</label>
       <div class="row">
-        <input id="pwAmt" class="grow" value="0" inputmode="decimal">
+        <input id="pwAmt" name="powerAmount" class="grow" value="0" inputmode="decimal" autocomplete="off">
         <span class="small" id="pwSym" style="width:70px;text-align:right">DAI</span>
       </div>
       <div class="row" style="gap:6px;margin-top:8px">
@@ -273,48 +289,6 @@
       <div class="row" style="margin-top:12px;gap:8px">
         <button class="ghost grow" id="pwApprove">授權</button>
         <button class="grow" id="pwGo">參與</button>
-      </div>
-    </section>
-  </div>
-
-  <!-- 兌換 -->
-  <div class="view" id="view-swap">
-    <section class="card" id="swapPage" style="display:none">
-      <div class="row between">
-        <strong style="font-size:20px">兌換 <span style="font-size:13px;color:#9CA3AF;font-weight:600">SWAP</span></strong>
-        <span class="badge b-wait">單一路由</span>
-      </div>
-      <div class="small" style="margin-top:4px">目前支援 AiLGNS 與 DAI 互換，確認報價與費用後提交。</div>
-
-      <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:14px">
-        <div class="row between"><span class="small">您支付</span><span class="small" id="swBalIn">餘額 —</span></div>
-        <div class="row" style="margin-top:6px">
-          <input id="swIn" class="grow" value="0" inputmode="decimal" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
-          <select id="swFrom" style="width:118px"><option>AiLGNS</option><option>DAI</option></select>
-        </div>
-        <div class="row" style="gap:6px;margin-top:10px">
-          <button class="ghost pct" data-pct="25" style="flex:1;font-size:12px;padding:8px 0">25%</button>
-          <button class="ghost pct" data-pct="50" style="flex:1;font-size:12px;padding:8px 0">50%</button>
-          <button class="ghost pct" data-pct="75" style="flex:1;font-size:12px;padding:8px 0">75%</button>
-          <button class="ghost pct" data-pct="100" style="flex:1;font-size:12px;padding:8px 0">最大</button>
-        </div>
-      </div>
-
-      <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:10px">
-        <div class="row between"><span class="small">預計收到</span><span class="small" id="swBalOut">餘額 —</span></div>
-        <div class="row" style="margin-top:6px">
-          <input id="swOut" class="grow" readonly value="0" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
-          <select id="swTo" style="width:118px"><option>DAI</option><option>AiLGNS</option></select>
-        </div>
-      </div>
-
-      <div class="row between" style="margin-top:14px"><span class="small">最低收到</span><b id="swMin">—</b></div>
-      <div class="row between" style="margin-top:8px"><span class="small">滑點容忍度</span><input id="swSlip" value="0.5" style="width:90px;text-align:right;padding:8px"></div>
-      <div class="small" id="swHint" style="margin-top:10px;color:#B45309">請先為 Router 授權對應代幣；授權只需做一次。</div>
-
-      <div class="row" style="margin-top:12px;gap:8px">
-        <button class="ghost grow" id="swApprove">授權</button>
-        <button class="grow" id="swSwap">兌換</button>
       </div>
     </section>
   </div>
@@ -339,9 +313,9 @@
         <div style="flex:1"><div class="small">團隊節點</div><b id="cmTeam">0</b></div>
       </div>
 
-      <label style="margin-top:14px">我的推薦連結</label>
+      <label for="cmLink" style="margin-top:14px">我的推薦連結</label>
       <div class="row">
-        <input id="cmLink" class="grow" readonly style="font-size:12px">
+        <input id="cmLink" name="referralLink" class="grow" readonly style="font-size:12px">
         <button class="ghost" id="cmCopy" style="white-space:nowrap">複製</button>
       </div>
 
@@ -350,12 +324,6 @@
         <button class="ghost" id="cmRefresh" style="padding:8px 14px;font-size:12px">刷新</button>
       </div>
       <div id="cmList" class="small" style="margin-top:8px">—</div>
-    </section>
-
-    <section class="card" id="helixSection" style="display:none">
-      <strong style="font-size:14px">渦輪 · veAiLGNS 操作</strong>
-      <div class="small" style="margin-top:4px">點「生成」後會自動跳到「交易」頁並填好參數。</div>
-      <div id="helixList" style="margin-top:12px"></div>
     </section>
 
     <details class="adv" id="dataWrap" style="margin:0 4px 14px">
@@ -370,20 +338,109 @@
     </details>
   </div>
 
+  <!-- 渦輪 -->
+  <div class="view" id="view-helix">
+    <section class="card" id="helixSection" style="display:none">
+      <strong style="font-size:20px">渦輪</strong>
+      <div class="small" style="margin-top:4px">veAiLGNS 與社區操作。点「生成」会跳到「交易」页并填好参数。</div>
+      <div id="helixList" style="margin-top:12px"></div>
+    </section>
+  </div>
+
   <!-- 交易 -->
   <div class="view" id="view-tx">
-    <section class="card" id="txSection" style="display:none">
+    <section class="card" id="safeCompose" style="display:none">
       <div class="row between">
-        <strong style="font-size:14px">待处理与历史交易</strong>
-        <button class="ghost" id="btnRefresh">刷新</button>
+        <strong style="font-size:20px">发起 Safe 交易</strong>
+        <span class="badge b-done">guardsafe 兼容</span>
       </div>
-      <div id="txList" style="margin-top:10px"></div>
+      <div class="small" style="margin-top:4px">填好后生成待批准交易，再前往「批准」页由所有者链上批准。</div>
+
+      <label for="sfTo">目标地址</label>
+      <input id="sfTo" name="safeTo" placeholder="0x…" autocomplete="off" spellcheck="false">
+      <label for="sfValue">原生币数量（DAI）</label>
+      <input id="sfValue" name="safeValue" value="0" inputmode="decimal" autocomplete="off">
+      <label for="sfData">calldata（纯转账填 0x）</label>
+      <textarea id="sfData" name="safeData" placeholder="0x" autocomplete="off" spellcheck="false"></textarea>
+
+      <button id="sfCompute" style="width:100%;margin-top:14px">生成待批准交易</button>
+      <div class="small" style="margin-top:8px">生成后自动计算哈希，并提示你前往批准页。</div>
     </section>
 
+    <section class="card" id="newSection" style="display:none">
+      <strong style="font-size:14px">发起新交易</strong>
+      <label for="to">目标合约地址</label>
+      <input id="to" name="txTo" placeholder="0x…" autocomplete="off" spellcheck="false">
+      <label for="value">原生币数量（DAI，纯转账用；ERC-20 调用填 0）</label>
+      <input id="value" name="txValue" value="0" inputmode="decimal" autocomplete="off">
+      <label for="data">calldata（纯转账填 0x）</label>
+      <textarea id="data" name="txData" placeholder="0x" autocomplete="off" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="grow" id="btnSubmit">提交（自动第 1 个确认）</button>
+      </div>
+      <div class="small" style="margin-top:8px">提交后，其他所有者确认后才能执行。</div>
+    </section>
+
+    <section class="card" id="swapPage" style="display:none">
+      <div class="row between">
+        <strong style="font-size:20px">兌換 <span style="font-size:13px;color:#9CA3AF;font-weight:600">SWAP</span></strong>
+        <span class="badge b-wait">單一路由</span>
+      </div>
+      <div class="small" style="margin-top:4px">目前支援 AiLGNS 與 DAI 互換，確認報價與費用後提交。</div>
+
+      <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:14px">
+        <div class="row between"><span class="small">您支付</span><span class="small" id="swBalIn">餘額 —</span></div>
+        <div class="row" style="margin-top:6px">
+          <input id="swIn" name="swapIn" class="grow" value="0" inputmode="decimal" autocomplete="off" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
+          <select id="swFrom" aria-label="支付币种" style="width:118px"><option>AiLGNS</option><option>DAI</option></select>
+        </div>
+        <div class="row" style="gap:6px;margin-top:10px">
+          <button class="ghost pct" data-pct="25" style="flex:1;font-size:12px;padding:8px 0">25%</button>
+          <button class="ghost pct" data-pct="50" style="flex:1;font-size:12px;padding:8px 0">50%</button>
+          <button class="ghost pct" data-pct="75" style="flex:1;font-size:12px;padding:8px 0">75%</button>
+          <button class="ghost pct" data-pct="100" style="flex:1;font-size:12px;padding:8px 0">最大</button>
+        </div>
+      </div>
+
+      <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:10px">
+        <div class="row between"><span class="small">預計收到</span><span class="small" id="swBalOut">餘額 —</span></div>
+        <div class="row" style="margin-top:6px">
+          <input id="swOut" class="grow" readonly value="0" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
+          <select id="swTo" aria-label="接收币种" style="width:118px"><option>DAI</option><option>AiLGNS</option></select>
+        </div>
+      </div>
+
+      <div class="row between" style="margin-top:14px"><span class="small">最低收到</span><b id="swMin">—</b></div>
+      <div class="row between" style="margin-top:8px"><span class="small">滑點容忍度</span><input id="swSlip" name="slippage" value="0.5" inputmode="decimal" aria-label="滑点容忍度" style="width:90px;text-align:right;padding:8px"></div>
+      <div class="small" id="swHint" style="margin-top:10px;color:#B45309">請先為 Router 授權對應代幣；授權只需做一次。</div>
+
+      <div class="row" style="margin-top:12px;gap:8px">
+        <button class="ghost grow" id="swApprove">授權</button>
+        <button class="grow" id="swSwap">兌換</button>
+      </div>
+    </section>
+
+    <details class="adv" id="genWrap" style="margin:0 4px 14px">
+      <summary>高级：calldata 生成器</summary>
+      <section class="card" id="genSection" style="display:none;margin-top:10px">
+        <strong style="font-size:14px">calldata 生成器</strong>
+        <label for="sig">函数签名</label>
+        <input id="sig" name="signature" placeholder="deposit(uint256) 或 approve(address,uint256)" autocomplete="off" spellcheck="false">
+        <label for="sigArgs">参数（英文逗号分隔；数组用 JSON，如 [1,2,3]）</label>
+        <input id="sigArgs" name="signatureArgs" placeholder="1000000000000000000" autocomplete="off" spellcheck="false">
+        <div class="row" style="margin-top:10px">
+          <button class="grow" id="btnGen">生成并填入</button>
+        </div>
+      </section>
+    </details>
+  </div>
+
+  <!-- 批准 -->
+  <div class="view" id="view-approve">
     <section class="card" id="safeSection" style="display:none">
       <div class="row between">
-        <strong style="font-size:20px">Safe 交易</strong>
-        <span class="badge b-done">guardsafe 兼容</span>
+        <strong style="font-size:20px">批准</strong>
+        <span class="badge b-wait">仅链上批准</span>
       </div>
 
       <div class="stats">
@@ -406,14 +463,8 @@
         <div class="small" style="margin-top:6px;color:#B45309">其他人打开本页即可看到并批准。</div>
       </div>
 
-      <label>目标地址</label>
-      <input id="sfTo" placeholder="0x...">
-      <label>原生币数量（DAI）</label>
-      <input id="sfValue" value="0" inputmode="decimal">
-      <label>calldata（纯转账填 0x）</label>
-      <textarea id="sfData" placeholder="0x"></textarea>
-
-      <div class="small" id="sfHashOut" style="margin-top:12px">—</div>
+      <div class="small" id="sfSummary" style="margin-top:14px">还没有待批准交易，请先在「交易」页生成。</div>
+      <div class="small" id="sfHashOut" style="margin-top:8px">—</div>
       <div class="small" id="sfApprovals" style="margin-top:6px"></div>
 
       <button id="sfChainApprove" style="width:100%;margin-top:14px" disabled>链上批准</button>
@@ -431,48 +482,34 @@
       </details>
 
       <details class="adv">
-        <summary>离线签名（可选）</summary>
-        <button class="ghost" id="sfSign" style="width:100%;margin-top:10px" disabled>用钱包签名</button>
-        <label>我的签名（复制发给其他所有者）</label>
-        <textarea id="sfSigOut" readonly placeholder="点上面「用钱包签名」生成" style="font-size:11px;min-height:56px"></textarea>
-        <label>已收集的签名（每行一个）</label>
-        <textarea id="sfSigIn" placeholder="粘贴其他所有者发来的签名，每行一个" style="font-size:11px;min-height:56px"></textarea>
-        <button class="ghost" id="sfHash" style="width:100%;margin-top:8px;font-size:12px;padding:8px">重新计算哈希</button>
-        <div class="small">离线签名只在本机生成，刷新会丢；优先用上面的「链上批准」。</div>
+        <summary>其他</summary>
+        <button class="ghost" id="sfHash" style="width:100%;margin-top:10px;font-size:12px;padding:8px">重新计算哈希</button>
+        <div class="small">批准全部写在链上，刷新、换设备都能看到；不再使用离线签名。</div>
       </details>
     </section>
 
-    <section class="card" id="newSection" style="display:none">
-      <strong style="font-size:14px">发起新交易</strong>
-      <label>目标合约地址</label>
-      <input id="to" placeholder="0x...">
-      <label>原生币数量（DAI，纯转账用；ERC-20 调用填 0）</label>
-      <input id="value" value="0" inputmode="decimal">
-      <label>calldata（纯转账填 0x）</label>
-      <textarea id="data" placeholder="0x"></textarea>
-      <div class="row" style="margin-top:12px">
-        <button class="grow" id="btnSubmit">提交（自动第 1 个确认）</button>
+    <section class="card" id="txSection" style="display:none">
+      <div class="row between">
+        <strong style="font-size:14px">待处理与历史交易</strong>
+        <button class="ghost" id="btnRefresh">刷新</button>
       </div>
-      <div class="small" style="margin-top:8px">提交后，其他所有者确认后才能执行。</div>
+      <div id="txList" style="margin-top:10px"></div>
     </section>
-
-    <details class="adv" id="genWrap" style="margin:0 4px 14px">
-      <summary>高级：calldata 生成器</summary>
-      <section class="card" id="genSection" style="display:none;margin-top:10px">
-        <strong style="font-size:14px">calldata 生成器</strong>
-        <label>函数签名</label>
-        <input id="sig" placeholder="deposit(uint256) 或 approve(address,uint256)">
-        <label>参数（英文逗号分隔；数组用 JSON，如 [1,2,3]）</label>
-        <input id="sigArgs" placeholder="1000000000000000000">
-        <div class="row" style="margin-top:10px">
-          <button class="grow" id="btnGen">生成并填入</button>
-        </div>
-      </section>
-    </details>
   </div>
 </main>
 
-<div id="toast"></div>
+<div id="approveModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="approveModalTitle" hidden>
+  <div class="modal-card">
+    <h2 id="approveModalTitle">交易已生成</h2>
+    <p class="small" id="approveModalText">需要所有者在「批准」页完成链上批准，凑够阈值后才能执行。</p>
+    <div class="row" style="gap:8px">
+      <button class="ghost grow" id="approveLater">稍后</button>
+      <button class="grow" id="approveGo">去批准</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- ethers 从 CDN 加载，带备用源 -->
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js"></script>
@@ -519,7 +556,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v20 · 2026-11-04 07:12";
+const BUILD = "v21 · 2026-11-04 07:25";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -884,8 +921,8 @@ async function submitTx() {
     if (realKind === "safe") {
       safeMode = true;
       setPanelsForKind("safe");
-      // 直接把当前表单内容搬到上方 Safe 表单，并算好哈希，
-      // 让用户能继续「用钱包签名」，而不是点了提交什么都没发生。
+      // 直接把当前表单内容搬到 Safe 表单，并算好哈希，
+      // 让用户能继续去「批准」页链上批准，而不是点了提交什么都没发生。
       const to = ($("to").value || "").trim();
       const val = ($("value").value || "0").trim();
       const data = ($("data").value || "0x").trim() || "0x";
@@ -895,10 +932,10 @@ async function submitTx() {
         $("sfValue").value = val;
         $("sfData").value = data;
         $("newSection").style.display = "none";
-        toast("这是 Safe 多签：已把 calldata 转入上方 Safe 表单并计算哈希，请点「用钱包签名」", 12000);
-        await safeComputeHash(false);
+        toast("这是 Safe 多签：已把 calldata 转入 Safe 表单并计算哈希", 12000);
+        await safeComputeHash(true);
       } else {
-        toast("这是 Safe 多签，不能用「提交」按钮；请用上方 Safe 操作区：填目标 → 计算哈希 → 用钱包签名", 12000);
+        toast("这是 Safe 多签，不能用「提交」按钮；请到「交易」页用 Safe 表单生成待批准交易", 12000);
       }
       logError("提交交易", new Error("地址是 Safe，已自动切换到 Safe 签名流程"));
       return;
@@ -999,9 +1036,9 @@ async function makeCalldata() {
       showView("tx");
       if (ethers.isAddress(($("sfTo").value || "").trim())) {
         toast("已生成 calldata，正在计算 Safe 哈希…");
-        await safeComputeHash(false);
+        await safeComputeHash(true);
       } else {
-        toast("calldata 已填入 Safe 表单；请先填目标地址，再点「重新计算哈希」", 9000);
+        toast("calldata 已填入 Safe 表单；请先填目标地址，再点「生成待批准交易」", 9000);
       }
       return;
     }
@@ -1559,7 +1596,7 @@ async function fillTx(target, data, label, valueText = "0") {
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     showView("tx");
     pendingLabel = label;
-    await safeComputeHash(false);
+    await safeComputeHash(true);
     return true;
   }
 
@@ -2031,7 +2068,7 @@ async function updateDiag(kind, rp) {
     `钱包网络：${chainId === null ? "未连接" : chainId + (chainId === 6714 ? " ✅" : " ❌")}` +
     ` · 合约代码：${hasCode ? "有" : "无"}` +
     ` · 类型：${label}` +
-    ` · 模式：${kind === "safe" ? "Safe 操作区" : kind === "custom" ? "自建多签操作区" : "—"}` +
+    ` · 模式：${kind === "safe" ? "Safe 多签" : kind === "custom" ? "自建多签" : "—"}` +
     ` · 账户：${account ? (await checkOwnership() ? "所有者 ✅" : "非所有者 ❌") : "未连接"}`;
 
   const warns = [];
@@ -2103,6 +2140,7 @@ function setPanelsForKind(kind) {
   const known = safe || custom;
 
   $("safeSection").style.display = safe ? "block" : "none";
+  $("safeCompose").style.display = safe ? "block" : "none";
   $("newSection").style.display = custom ? "block" : "none";
   $("txSection").style.display = custom ? "block" : "none";
   $("genSection").style.display = custom ? "block" : "none";
@@ -2138,6 +2176,7 @@ async function loadSafeData(rp, restoreDraft = false) {
     safeTx = null;
     safeOnChainOwners = [];
     $("sfHashOut").textContent = "—";
+    $("sfSummary").textContent = "还没有待批准交易，请先在「交易」页生成。";
     $("sfApprovals").textContent = "";
     safeApprovedCount = 0;
     safeMyApproved = false;
@@ -2147,7 +2186,7 @@ async function loadSafeData(rp, restoreDraft = false) {
     // 覆盖上方「多签地址」卡片里可能残留的上一个合约信息
     $("multisigInfo").innerHTML =
       `Safe 合约 · 阈值 <b>${threshold} / ${owners.length}</b> · Nonce <b>${nonce}</b><br>` +
-      `余额 ${ethers.formatEther(balance)} DAI · 下方为 Safe 操作区`;
+      `余额 ${ethers.formatEther(balance)} DAI · 在「交易」页发起，在「批准」页批准`;
 
     // 重新打开页面时恢复上次没执行的 Safe 交易，并重新算哈希/拉取链上批准
     if (restoreDraft && ethers.isAddress(($("sfTo").value || "").trim())) {
@@ -2193,25 +2232,24 @@ async function safeComputeHash(autoApprove) {
       ZERO,       // refundReceiver
       nonce       // nonce
     );
-    const hashChanged = !safeTx || safeTx.hash !== hash;
     safeTx = { hash, to: ethers.getAddress($("sfTo").value.trim()), value, data, nonce };
     $("sfHashOut").textContent = "交易哈希：" + hash;
-    if (hashChanged) {
-      $("sfSigOut").value = "";
-      $("sfSigIn").value = "";
-    }
+    const valueText = String($("sfValue").value || "0");
+    const shortAddr = `${safeTx.to.slice(0, 6)}…${safeTx.to.slice(-4)}`;
+    const dataShort = data.length > 22 ? data.slice(0, 22) + "…" : data || "0x";
+    $("sfSummary").innerHTML = `目标 <b>${shortAddr}</b> · 金额 <b>${valueText} DAI</b><br>calldata ${dataShort}`;
     // 记住这笔待执行的交易：重新打开页面后可以恢复并继续批准
     storageSet(
       "anubis.safeDraft",
-      JSON.stringify({ to: safeTx.to, value: String($("sfValue").value || "0"), data })
+      JSON.stringify({ to: safeTx.to, value: valueText, data })
     );
-    $("sfSign").disabled = false;
     $("sfChainApprove").disabled = false;
     updateSafeShareLink();
     const label = pendingLabel || "Safe 交易";
     pendingLabel = "";
     publishPending(label);
     await refreshSignatureStatus();
+    if (autoApprove) promptApprove();
   } catch (err) {
     toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
@@ -2238,8 +2276,15 @@ async function loadPending() {
     const data = await res.json();
     pendingItems = Array.isArray(data.items) ? data.items : [];
     renderPending();
+    const badge = $("approveCount");
+    if (badge) {
+      badge.textContent = String(pendingItems.length);
+      badge.hidden = pendingItems.length === 0;
+    }
   } catch (err) {
     box.textContent = "待办列表读取失败：" + (err.message || err);
+    const badge = $("approveCount");
+    if (badge) badge.hidden = true;
   }
 }
 
@@ -2281,7 +2326,7 @@ async function applyPending(item) {
   $("sfValue").value = item.value || "0";
   $("sfData").value = item.data || "0x";
   await safeComputeHash(false);
-  showView("tx");
+  showView("approve");
 }
 
 async function publishPending(label) {
@@ -2333,81 +2378,16 @@ function updateSafeShareLink() {
   el.value = u.toString();
 }
 
-const SAFE_TYPES = {
-  SafeTx: [
-    { name: "to", type: "address" },
-    { name: "value", type: "uint256" },
-    { name: "data", type: "bytes" },
-    { name: "operation", type: "uint8" },
-    { name: "safeTxGas", type: "uint256" },
-    { name: "baseGas", type: "uint256" },
-    { name: "gasPrice", type: "uint256" },
-    { name: "gasToken", type: "address" },
-    { name: "refundReceiver", type: "address" },
-    { name: "nonce", type: "uint256" },
-  ],
-};
-
-function safeTypedData() {
-  return {
-    domain: { chainId: 6714, verifyingContract: multisig },
-    types: SAFE_TYPES,
-    message: {
-      to: safeTx.to,
-      value: safeTx.value,
-      data: safeTx.data,
-      operation: 0,
-      safeTxGas: 0,
-      baseGas: 0,
-      gasPrice: 0,
-      gasToken: ZERO,
-      refundReceiver: ZERO,
-      nonce: safeTx.nonce,
-    },
-  };
-}
-
-/** 校验并去重文本框里的签名，按 owner 地址升序返回 */
-function collectSignatures() {
-  if (!safeTx) return [];
-  const lines = ($("sfSigIn").value || "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const mine = $("sfSigOut").value.trim();
-  if (mine) lines.push(mine);
-
-  const td = safeTypedData();
-  const byOwner = new Map();
-  for (const sig of lines) {
-    try {
-      const owner = ethers.verifyTypedData(td.domain, td.types, td.message, sig);
-      if (!safeOwners.some((o) => o.toLowerCase() === owner.toLowerCase())) continue;
-      const key = owner.toLowerCase();
-      if (!byOwner.has(key)) byOwner.set(key, { owner, sig });
-    } catch {}
-  }
-  return [...byOwner.values()].sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
-}
-
 /** 链上批准对应的「预验证签名」：r=owner，s=0，v=1 */
 function preValidatedSignature(owner) {
   return ethers.concat([ethers.zeroPadValue(ethers.getAddress(owner), 32), ethers.ZeroHash, "0x01"]);
 }
 
-/** 本地离线签名 + 链上批准，按 owner 升序合并（Safe 要求严格升序） */
+/** 只用链上批准，按 owner 升序排列（Safe 要求严格升序） */
 function combinedApprovals() {
-  const byOwner = new Map();
-  for (const s of collectSignatures()) {
-    byOwner.set(s.owner.toLowerCase(), { owner: s.owner, sig: s.sig, source: "离线签名" });
-  }
-  for (const o of safeOnChainOwners) {
-    const key = o.toLowerCase();
-    if (!byOwner.has(key)) {
-      byOwner.set(key, { owner: o, sig: preValidatedSignature(o), source: "链上批准" });
-    }
-  }
-  return [...byOwner.values()].sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
+  return safeOnChainOwners
+    .map((o) => ({ owner: o, sig: preValidatedSignature(o), source: "链上批准" }))
+    .sort((a, b) => (a.owner.toLowerCase() < b.owner.toLowerCase() ? -1 : 1));
 }
 
 async function refreshSignatureStatus() {
@@ -2462,7 +2442,7 @@ async function safeApproveOnChain() {
   } finally {
     if (safeTx) {
       btn.disabled = false;
-      btn.textContent = "链上批准（写到链上，其他所有者可见）";
+      btn.textContent = "链上批准";
     }
   }
 }
@@ -2488,32 +2468,6 @@ function updateSafeMainButton() {
     : `还差 ${need - safeApprovedCount} 个批准`;
 }
 
-async function safeSign() {
-  if (!safeTx) {
-    toast("请先计算哈希");
-    return;
-  }
-  if (!signer) {
-    toast("请先连接钱包");
-    return;
-  }
-  try {
-    const td = safeTypedData();
-    toast("请在钱包中确认签名（不花 gas）…", 9000);
-    const sig = await signer.signTypedData(td.domain, td.types, td.message);
-    $("sfSigOut").value = sig;
-    const box = $("sfSigIn");
-    if (!box.value.includes(sig)) {
-      box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + sig;
-    }
-    refreshSignatureStatus();
-    toast("签名完成，复制发给其他所有者收集");
-  } catch (err) {
-    toast("签名失败：" + (err.shortMessage || err.message), 7000);
-    logError("签名", err);
-  }
-}
-
 async function safeExec() {
   if (!safeTx || !signer) return;
   if (!(await precheck())) return;
@@ -2537,7 +2491,7 @@ async function safeExec() {
       return;
     }
 
-    // 离线签名 + 链上批准（预验证签名）一起打包
+    // 链上批准（预验证签名）打包
     const signatures = ethers.concat(approvals.map((a) => a.sig));
 
     toast("请在钱包中确认执行…", 8000);
@@ -2559,6 +2513,7 @@ async function safeExec() {
     await removePendingItem(executedHash);
     toast("已执行");
     await load();
+    showView("tx");
   } catch (err) {
     toast("执行失败：" + (err.shortMessage || err.message), 6000);
     logError("执行", err);
@@ -2609,20 +2564,59 @@ $("tkMax").onclick = () => {
 };
 $("tkSend").onclick = tokenSend;
 
-/* 頁簽導航：一次只顯示一個視圖 */
-function showView(name) {
+/* 頁簽導航：一次只顯示一個視圖，并把状态写进 URL */
+const VIEW_NAMES = ["asset", "power", "community", "helix", "tx", "approve"];
+
+function showView(name, updateHash = true) {
   document.querySelectorAll(".view").forEach((v) => {
     v.classList.toggle("active", v.id === `view-${name}`);
   });
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.view === name);
   });
+  if (updateHash && location.hash !== `#${name}`) {
+    history.replaceState(null, "", `#${name}`);
+  }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 document.querySelectorAll(".tab").forEach((b) => {
   b.onclick = () => showView(b.dataset.view);
 });
+
+/* 交易生成后的「去批准」弹窗 */
+let modalReturnFocus = null;
+
+function promptApprove() {
+  const modal = $("approveModal");
+  if (!modal) return;
+  modalReturnFocus = document.activeElement;
+  modal.hidden = false;
+  $("approveGo").focus();
+}
+
+function hideApproveModal() {
+  const modal = $("approveModal");
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  if (modalReturnFocus && modalReturnFocus.focus) modalReturnFocus.focus();
+}
+
+$("approveGo").onclick = () => {
+  hideApproveModal();
+  showView("approve");
+};
+$("approveLater").onclick = hideApproveModal;
+$("approveModal").addEventListener("click", (e) => {
+  if (e.target === $("approveModal")) hideApproveModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideApproveModal();
+});
+
+/* 支持直接带 #tx / #approve 打开 */
+const initialView = location.hash.replace("#", "");
+showView(VIEW_NAMES.includes(initialView) ? initialView : "asset", false);
 
 /* 兌換 */
 document.querySelectorAll("[data-pct]").forEach((b) => {
@@ -2718,6 +2712,7 @@ $("btnSelfCheck").onclick = selfCheck;
 /* 社区 */
 $("cmRefresh").onclick = loadCommunityData;
 $("sfHash").onclick = () => safeComputeHash(false);
+$("sfCompute").onclick = () => safeComputeHash(true);
 $("sfCopyLink").onclick = async () => {
   const v = $("sfLink").value;
   if (!v) {
@@ -2732,11 +2727,9 @@ $("sfCopyLink").onclick = async () => {
     toast("已选中链接，请手动复制", 8000);
   }
 };
-$("sfSign").onclick = safeSign;
 $("sfMain").onclick = safeExec;
 $("sfChainApprove").onclick = safeApproveOnChain;
 $("sfPendingRefresh").onclick = loadPending;
-$("sfSigIn").addEventListener("input", refreshSignatureStatus);
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
   if (!v) return;
