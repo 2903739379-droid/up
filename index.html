@@ -439,7 +439,7 @@ const ABI = [
 const $ = (id) => document.getElementById(id);
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v8 · 2026-11-04 03:55";
+const BUILD = "v9 · 2026-11-04 04:05";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -923,6 +923,14 @@ const PRESETS = [
         args: (f) => [HELIX.turbine, u(f.amt)],
       },
       {
+        title: "授权 AiLGNS 给涡轮",
+        desc: "AiLGNS.approve(Turbine, 数量) —— 激活前通常要授权这个",
+        target: HELIX.ailgns,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (AiLGNS)", def: "100" }],
+        args: (f) => [HELIX.turbine, u(f.amt)],
+      },
+      {
         title: "参与涡轮 activate",
         desc: "Turbine.activate(amount, maxDaiIn, deadline)",
         target: HELIX.turbine,
@@ -989,6 +997,14 @@ const PRESETS = [
     group: "veAiLGNS",
     items: [
       {
+        title: "授权 AiLGNS 给 veAiLGNS",
+        desc: "AiLGNS.approve(VE, 数量) —— 锁仓前必须先授权",
+        target: HELIX.ailgns,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (AiLGNS)", def: "100" }],
+        args: (f) => [HELIX.ve, u(f.amt)],
+      },
+      {
         title: "锁仓生成 veAiLGNS",
         desc: "VE.createLock(amount, lockEpochs)",
         target: HELIX.ve,
@@ -1045,7 +1061,7 @@ const PRESETS = [
           const to = tokenOf(f.tokenOut);
           if (ti === to) throw new Error("卖出和买入不能是同一种代币");
           const amountIn = u(f.amountIn);
-          const rp = provider || new ethers.JsonRpcProvider(RPC);
+          const rp = new ethers.JsonRpcProvider(RPC);
           const routerRead = new ethers.Contract(
             HELIX.router,
             ["function quoteExactIn(address,address,uint256) view returns (uint256)"],
@@ -1271,7 +1287,7 @@ async function loadHelixData() {
   }
   box.textContent = "读取中…";
 
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const mk = (addr, abi) => new ethers.Contract(addr, abi, rp);
   const fmt = (v) =>
     Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -1432,7 +1448,7 @@ async function fillTx(target, data, label) {
 async function loadAssetData() {
   const who = multisig;
   if (!who) return;
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const nft = new ethers.Contract(
     HELIX.productionNft,
     ["function balanceOf(address) view returns (uint256)", "function remainingOf(address) view returns (uint256)"],
@@ -1520,7 +1536,7 @@ async function loadTokenInfo() {
     return;
   }
 
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const token = new ethers.Contract(
     addr,
     [
@@ -1594,7 +1610,7 @@ async function readBal(rp, token, who) {
 
 async function loadSwapBalances() {
   if (!multisig) return;
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const [d, a] = await Promise.all([readBal(rp, HELIX.dai, multisig), readBal(rp, HELIX.ailgns, multisig)]);
   swBal = { DAI: d, AiLGNS: a };
   $("swBalIn").textContent = "餘額 " + fmt4(swBal[$("swFrom").value]);
@@ -1627,7 +1643,7 @@ async function updateSwapQuote() {
     return;
   }
 
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   try {
     const router = new ethers.Contract(HELIX.router, ROUTER_ABI, rp);
     const q = await router.quoteExactIn(tokAddr(from), tokAddr(to), amt);
@@ -1693,7 +1709,7 @@ let pwRate = { dai: 25000n, lgns: 0n, ailgns: 0n };
 
 async function loadPowerData() {
   if (!multisig) return;
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const [d, l, a] = await Promise.all([
     readBal(rp, HELIX.dai, multisig),
     readBal(rp, HELIX.lgns, multisig),
@@ -1785,7 +1801,7 @@ const COM_ABI = [
 
 async function loadCommunityData() {
   if (!multisig) return;
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const c = new ethers.Contract(HELIX.community, COM_ABI, rp);
 
   $("cmLink").value = `https://awakehelix.io/power#/community?ref=${multisig}`;
@@ -2006,7 +2022,7 @@ async function safeComputeHash(autoApprove) {
     return;
   }
 
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   try {
     const nonce = await read.nonce();
@@ -2041,7 +2057,7 @@ async function safeComputeHash(autoApprove) {
 
 async function refreshSafeApprovals() {
   if (!safeTx) return 0;
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   const rows = [];
   let approved = 0;
@@ -2115,7 +2131,7 @@ async function safeExec() {
   if (!(await precheck())) return;
   safeExecuting = true;
   updateSafeMainButton();
-  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const rp = new ethers.JsonRpcProvider(RPC);
   const read = new ethers.Contract(multisig, SAFE_ABI, rp);
   const write = new ethers.Contract(multisig, SAFE_ABI, signer);
 
@@ -2350,6 +2366,8 @@ if (window.ethereum) {
   window.ethereum.on?.("accountsChanged", () => location.reload());
   window.ethereum.on?.("chainChanged", () => location.reload());
 }
+
+
 
 
 
