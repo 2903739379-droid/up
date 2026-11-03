@@ -1,0 +1,1728 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anubis 多签控制台</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#fff; --line:#e2e8f0; --muted:#64748b;
+    --accent:#2563eb; --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:#f1f5f9;color:#0f172a;padding-bottom:48px}
+  header{background:var(--bg);color:#fff;padding:18px 16px}
+  header h1{margin:0;font-size:18px;letter-spacing:.02em}
+  header p{margin:6px 0 0;font-size:12px;color:#94a3b8}
+  main{padding:12px;max-width:720px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{min-width:0}
+  .between{justify-content:space-between}
+  .grow{flex:1}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  textarea{min-height:64px;resize:vertical}
+  button{padding:10px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:600}
+  button:disabled{opacity:.45}
+  button.ghost{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+  button.ok{background:var(--ok)}
+  button.danger{background:var(--err)}
+  .small{font-size:12px;color:var(--muted);word-break:break-all;line-height:1.6}
+  .tx{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+  .tx h3{margin:0 0 6px;font-size:14px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+  .b-done{background:#dcfce7;color:#166534}
+  .b-wait{background:#fef3c7;color:#92400e}
+  pre{margin:8px 0 0;font-size:11px;white-space:pre-wrap;word-break:break-all;color:#334155;background:#f8fafc;padding:8px;border-radius:6px}
+  #toast{position:fixed;left:12px;right:12px;bottom:16px;background:#0f172a;color:#fff;padding:12px;border-radius:10px;font-size:13px;display:none;z-index:9}
+  .warn{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px;border-radius:8px;font-size:13px;display:none}
+  .hx-group{margin-bottom:16px}
+  .hx-group>h4{margin:0 0 8px;font-size:13px;color:#334155;border-left:3px solid #2563eb;padding-left:8px}
+  .hx{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:#fbfdff}
+  .hx-title{font-size:13px;font-weight:700}
+  .hx-desc{font-size:11px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;margin:2px 0 8px;word-break:break-all}
+  .hx-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .hx-fields label{margin:0;font-size:11px}
+  .hx-fields input,.hx-fields select{width:100%;padding:7px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit}
+  .hx button{margin-top:8px;width:100%;padding:8px;font-size:13px}
+</style>
+<style>
+  /* ===== AwakeHelix 视觉主题（覆盖上面的基础样式） ===== */
+  :root{
+    --hx-bg:#F2F4FF;
+    --hx-ink:#171528;
+    --hx-muted:#7A7A93;
+    --hx-primary:#7C3AED;
+    --hx-primary-2:#8B5CF6;
+    --hx-soft:#F5F3FF;
+    --hx-line:#EAE6FB;
+  }
+  body{background:var(--hx-bg);color:var(--hx-ink);-webkit-font-smoothing:antialiased}
+  header{background:transparent;color:var(--hx-ink);padding:22px 18px 6px}
+  header h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--hx-ink)}
+  header p{color:var(--hx-muted);font-size:12px;margin-top:4px}
+  main{padding:6px 12px 64px;max-width:780px}
+  .card{background:#fff;border:0;border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:0 8px 26px rgba(76,29,149,.06)}
+  .card strong{color:var(--hx-ink)}
+  label{color:var(--hx-muted);font-size:12px;margin:12px 0 6px}
+  input,textarea,select{background:var(--hx-soft);border:1px solid transparent;border-radius:14px;padding:12px 14px;font-size:15px;color:var(--hx-ink)}
+  input:focus,textarea:focus,select:focus{outline:none;background:#fff;border-color:#C4B5FD;box-shadow:0 0 0 4px rgba(124,58,237,.08)}
+  button{padding:13px 16px;border-radius:16px;font-size:15px;font-weight:700;background:linear-gradient(135deg,var(--hx-primary),var(--hx-primary-2));box-shadow:0 8px 20px rgba(124,58,237,.22);transition:transform .08s ease,box-shadow .15s ease}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:#fff;color:var(--hx-primary);border:1.5px solid #DDD6FE;box-shadow:none}
+  button.ok{background:linear-gradient(135deg,#10B981,#34D399);box-shadow:0 8px 20px rgba(16,185,129,.2)}
+  button.danger{background:linear-gradient(135deg,#DC2626,#F87171);box-shadow:0 8px 20px rgba(220,38,38,.18)}
+  button:disabled{opacity:.45;box-shadow:none}
+  .small{color:var(--hx-muted);line-height:1.65}
+  .badge{border-radius:999px;padding:3px 10px}
+  .b-done{background:#E9FBF1;color:#0F7A46}
+  .b-wait{background:#F3EEFF;color:#6D28D9}
+  .tx{border:1px solid var(--hx-line);border-radius:18px;background:#FCFBFF;padding:14px}
+  pre{background:#F7F5FF;border-radius:12px;color:#4C1D95}
+  .hx{background:#FBF9FF;border:1px solid var(--hx-line);border-radius:18px;padding:14px}
+  .hx-group>h4{border-left:0;padding-left:0;font-size:14px;color:#4C1D95;font-weight:800}
+  .hx-title{font-size:14px;color:var(--hx-ink)}
+  .hx button{margin-top:10px;padding:10px;font-size:13px;border-radius:12px}
+  .mode-btn{background:#fff;border:2px solid #EDE9FE;color:#4C1D95;border-radius:18px;box-shadow:none;font-weight:700}
+  #assetRemain{font-size:40px;letter-spacing:-.03em;color:var(--hx-ink)}
+  #assetSection hr{border-top:1px solid var(--hx-line)!important;margin:18px 0!important}
+  .warn{background:#FFF1F2;border-color:#FECDD3;border-radius:14px}
+  #toast{background:#1B1630;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
+  #status{display:inline-block;background:#E9E5FB;color:#5B21B6!important;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;margin-top:8px}
+  #status.on{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff!important;box-shadow:0 6px 16px rgba(124,58,237,.28)}
+  .dot{display:inline-block;width:24px;height:24px;border-radius:50%;color:#fff;font-weight:800;font-size:12px;line-height:24px;text-align:center;margin-bottom:2px}
+  #tabs{position:sticky;top:0;z-index:6;display:flex;gap:8px;overflow-x:auto;padding:10px 12px;background:rgba(242,244,255,.94);backdrop-filter:blur(10px);-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(124,58,237,.06)}
+  #tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;background:#fff;color:#4C1D95;border:1px solid #EDE9FE;box-shadow:none;padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700}
+  .tab.active{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff;border-color:transparent;box-shadow:0 6px 14px rgba(124,58,237,.25)}
+  .pmode{background:#fff;color:#4C1D95;border:1px solid #EDE9FE;box-shadow:none;font-weight:700}
+  .pmode.active{background:linear-gradient(135deg,#7C3AED,#8B5CF6);color:#fff;border-color:transparent}
+</style>
+</head>
+<body>
+<header>
+  <h1>Anubis 多签控制台 <span id="ver" style="font-size:12px;font-weight:600;color:#60a5fa;vertical-align:middle">v2 · 4/3</span></h1>
+  <p id="status">未连接钱包</p>
+</header>
+
+<nav id="tabs">
+  <button class="tab" data-target="assetSection">資產</button>
+  <button class="tab" data-target="powerPage">算力</button>
+  <button class="tab" data-target="swapPage">兌換</button>
+  <button class="tab" data-target="communityPage">社區</button>
+  <button class="tab" data-target="helixSection">渦輪</button>
+  <button class="tab" data-target="tokenSection">轉帳</button>
+  <button class="tab" data-target="txSection">交易</button>
+</nav>
+
+<main>
+  <section class="card">
+    <div class="row between">
+      <strong style="font-size:14px">钱包</strong>
+      <button id="btnConnect">连接钱包</button>
+    </div>
+    <div class="small" id="account" style="margin-top:8px">尚未连接</div>
+    <div class="warn" id="chainWarn" style="margin-top:10px">
+      当前网络不是 Anubis（6714）。请切换网络后再操作。
+      <div style="margin-top:8px"><button class="danger" id="btnSwitch">切换到 Anubis</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <strong style="font-size:14px">多签地址</strong>
+    <input id="multisig" placeholder="0x... 部署后得到">
+    <div class="row" style="margin-top:10px">
+      <button class="grow" id="btnLoad">载入</button>
+      <button class="ghost" id="btnCopy">复制</button>
+    </div>
+    <div class="small" id="multisigInfo" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card" id="txSection" style="display:none">
+    <div class="row between">
+      <strong style="font-size:14px">待处理与历史交易</strong>
+      <button class="ghost" id="btnRefresh">刷新</button>
+    </div>
+    <div id="txList" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card" id="assetSection" style="display:none">
+    <div class="row between">
+      <div>
+        <div style="font-size:20px;font-weight:800">生產權 NFT</div>
+        <div class="small">管理生產額度</div>
+      </div>
+      <span class="badge b-wait" style="background:#dcfce7;color:#166534">左螺旋</span>
+    </div>
+
+    <div style="margin-top:16px" class="small">剩餘額度</div>
+    <div style="font-size:34px;font-weight:800;line-height:1.1">
+      <span id="assetRemain">—</span><span style="font-size:16px;font-weight:600;margin-left:6px">DAI</span>
+    </div>
+
+    <div class="row" style="gap:18px;margin-top:14px;align-items:flex-start">
+      <div><div class="small">初始額度</div><b id="assetInitial">—</b></div>
+      <div><div class="small">已消耗額度</div><b id="assetUsed">—</b></div>
+      <div><div class="small">持有 NFT</div><b id="assetCount">—</b></div>
+    </div>
+
+    <hr style="border:0;border-top:1px solid #e2e8f0;margin:16px 0">
+
+    <div class="row between">
+      <strong style="font-size:14px">鑄造 NFT</strong>
+      <span class="small" id="assetPrice">—</span>
+    </div>
+
+    <div class="row" style="gap:8px;margin-top:10px">
+      <button class="ghost mode-btn" data-mode="1" style="flex:1;font-size:12px;padding:12px 4px;border-color:#7C3AED">
+        <span class="dot" style="background:#7C3AED">L</span><br>LGNS<br><b>2.0×</b>
+      </button>
+      <button class="ghost mode-btn" data-mode="2" disabled style="flex:1;font-size:12px;padding:12px 4px;opacity:.45">
+        <span class="dot" style="background:#9CA3AF">＋</span><br>混合<br><b>2.5×</b>
+      </button>
+      <button class="ghost mode-btn" data-mode="3" style="flex:1;font-size:12px;padding:12px 4px">
+        <span class="dot" style="background:#F59E0B">A</span><br>AiLGNS<br><b>3.0×</b>
+      </button>
+    </div>
+
+    <label>銷毀數量</label>
+    <div class="row">
+      <input id="assetAmount" value="0" inputmode="decimal" class="grow">
+      <button class="ghost" id="assetMax" style="white-space:nowrap">最大</button>
+    </div>
+    <div class="small" id="assetHint" style="margin-top:6px">可用 —　预计额度 —</div>
+
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="ghost grow" id="assetApprove">授權</button>
+      <button class="ghost grow" id="assetRevoke">解除授權</button>
+      <button class="grow" id="assetMint">鑄造</button>
+    </div>
+  </section>
+
+  <section class="card" id="dataSection" style="display:none">
+    <div class="row between">
+      <strong style="font-size:14px">Helix 数据</strong>
+      <button class="ghost" id="btnData">刷新</button>
+    </div>
+    <div id="dataList" class="small" style="margin-top:10px">尚未加载</div>
+  </section>
+
+  <section class="card" id="helixSection" style="display:none">
+    <strong style="font-size:14px">渦輪 · veAiLGNS · 社區</strong>
+    <div class="small" style="margin-top:4px">
+      資產、算力、兌換已有专属页面，这里只放其余操作。点「生成」会填进下方提交框，仍需 3 人确认。
+    </div>
+    <div id="helixList" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card" id="genSection" style="display:none">
+    <strong style="font-size:14px">calldata 生成器</strong>
+    <div class="small" style="margin-top:4px">不用电脑也能拼出任意合约调用的数据。</div>
+    <label>函数签名</label>
+    <input id="sig" placeholder="deposit(uint256) 或 approve(address,uint256)">
+    <label>参数（英文逗号分隔；数组用 JSON，如 [1,2,3]）</label>
+    <input id="sigArgs" placeholder="1000000000000000000">
+    <div class="row" style="margin-top:10px">
+      <button class="grow" id="btnGen">生成并填入下方</button>
+    </div>
+  </section>
+
+  <section class="card" id="swapPage" style="display:none">
+    <div class="row between">
+      <strong style="font-size:20px">兌換 <span style="font-size:13px;color:#9CA3AF;font-weight:600">SWAP</span></strong>
+      <span class="badge b-wait">單一路由</span>
+    </div>
+    <div class="small" style="margin-top:4px">目前支援 AiLGNS 與 DAI 互換，確認報價與費用後提交。</div>
+
+    <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:14px">
+      <div class="row between"><span class="small">您支付</span><span class="small" id="swBalIn">餘額 —</span></div>
+      <div class="row" style="margin-top:6px">
+        <input id="swIn" class="grow" value="0" inputmode="decimal" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
+        <select id="swFrom" style="width:118px"><option>AiLGNS</option><option>DAI</option></select>
+      </div>
+      <div class="row" style="gap:6px;margin-top:10px">
+        <button class="ghost pct" data-pct="25" style="flex:1;font-size:12px;padding:8px 0">25%</button>
+        <button class="ghost pct" data-pct="50" style="flex:1;font-size:12px;padding:8px 0">50%</button>
+        <button class="ghost pct" data-pct="75" style="flex:1;font-size:12px;padding:8px 0">75%</button>
+        <button class="ghost pct" data-pct="100" style="flex:1;font-size:12px;padding:8px 0">最大</button>
+      </div>
+    </div>
+
+    <div style="background:#FAF9FF;border-radius:18px;padding:14px;margin-top:10px">
+      <div class="row between"><span class="small">預計收到</span><span class="small" id="swBalOut">餘額 —</span></div>
+      <div class="row" style="margin-top:6px">
+        <input id="swOut" class="grow" readonly value="0" style="background:transparent;font-size:26px;font-weight:700;padding:4px 0">
+        <select id="swTo" style="width:118px"><option>DAI</option><option>AiLGNS</option></select>
+      </div>
+    </div>
+
+    <div class="row between" style="margin-top:14px"><span class="small">最低收到</span><b id="swMin">—</b></div>
+    <div class="row between" style="margin-top:8px"><span class="small">滑點容忍度</span><input id="swSlip" value="0.5" style="width:90px;text-align:right;padding:8px"></div>
+    <div class="small" id="swHint" style="margin-top:10px;color:#B45309">請先為 Router 授權對應代幣；授權只需做一次。</div>
+
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="ghost grow" id="swApprove">授權</button>
+      <button class="grow" id="swSwap">兌換</button>
+    </div>
+  </section>
+
+  <section class="card" id="powerPage" style="display:none">
+    <strong style="font-size:20px">算力參與</strong>
+    <div class="small" style="margin-top:4px">真實貢獻 · 有限排放</div>
+
+    <div class="row" style="gap:6px;margin-top:12px">
+      <button class="ghost pmode" data-mode="dai" style="flex:1;font-size:13px">DAI 參與</button>
+      <button class="ghost pmode" data-mode="lgns" style="flex:1;font-size:13px">LGNS 銷毀</button>
+      <button class="ghost pmode" data-mode="ailgns" style="flex:1;font-size:13px">AiLGNS 銷毀</button>
+    </div>
+
+    <label>參與數量</label>
+    <div class="row">
+      <input id="pwAmt" class="grow" value="0" inputmode="decimal">
+      <span class="small" id="pwSym" style="width:70px;text-align:right">DAI</span>
+    </div>
+    <div class="row" style="gap:6px;margin-top:8px">
+      <button class="ghost pct" data-ppct="25" style="flex:1;font-size:12px;padding:8px 0">25%</button>
+      <button class="ghost pct" data-ppct="50" style="flex:1;font-size:12px;padding:8px 0">50%</button>
+      <button class="ghost pct" data-ppct="75" style="flex:1;font-size:12px;padding:8px 0">75%</button>
+      <button class="ghost pct" data-ppct="100" style="flex:1;font-size:12px;padding:8px 0">最大</button>
+    </div>
+    <div class="row between" style="margin-top:10px"><span class="small">錢包餘額</span><b id="pwBal">—</b></div>
+    <div class="row between" style="margin-top:6px"><span class="small">今日剩餘額度</span><b id="pwCap">—</b></div>
+    <div class="row between" style="margin-top:6px"><span class="small">您取得的算力</span><b id="pwPower">—</b></div>
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="ghost grow" id="pwApprove">授權</button>
+      <button class="grow" id="pwGo">參與</button>
+    </div>
+  </section>
+
+  <section class="card" id="communityPage" style="display:none">
+    <strong style="font-size:20px">左螺旋 · 社區增長</strong>
+    <div class="small" style="margin-top:2px;letter-spacing:.14em;font-size:11px">PEOPLE POWER. PROTOCOL GROWTH.</div>
+
+    <div style="background:linear-gradient(120deg,#2563EB 0%,#7C3AED 55%,#A855F7 100%);border-radius:22px;padding:20px;margin-top:14px;color:#fff">
+      <div style="font-size:13px;opacity:.9">我的社區</div>
+      <div style="font-size:44px;font-weight:800;line-height:1.05;margin-top:4px">
+        <span id="cmLevel">0</span>
+        <span style="font-size:15px;font-weight:600;opacity:.9">個算力節點</span>
+      </div>
+      <div style="margin-top:14px;font-size:12px;opacity:.85">推薦人：<span id="cmReferrer">—</span></div>
+    </div>
+
+    <div class="row" style="gap:12px;margin-top:14px">
+      <div style="flex:1"><div class="small">直接推薦</div><b id="cmCount">0</b><span class="small"> 人</span></div>
+      <div style="flex:1"><div class="small">團隊節點</div><b id="cmTeam">0</b></div>
+    </div>
+
+    <label style="margin-top:14px">我的推薦連結</label>
+    <div class="row">
+      <input id="cmLink" class="grow" readonly style="font-size:12px">
+      <button class="ghost" id="cmCopy" style="white-space:nowrap">複製</button>
+    </div>
+
+    <div class="row between" style="margin-top:16px">
+      <strong style="font-size:14px">直接推薦名單</strong>
+      <button class="ghost" id="cmRefresh" style="padding:8px 14px;font-size:12px">刷新</button>
+    </div>
+    <div id="cmList" class="small" style="margin-top:8px">—</div>
+  </section>
+
+  <section class="card" id="tokenSection" style="display:none">
+    <strong style="font-size:14px">代币转账</strong>
+    <div class="small" style="margin-top:4px">输入任意 ERC-20 合约地址，读取精度与多签余额后生成 transfer。</div>
+    <label>代币合约地址</label>
+    <input id="tkAddr" placeholder="0x...">
+    <label>收款地址</label>
+    <input id="tkTo" placeholder="0x...">
+    <label>数量</label>
+    <div class="row">
+      <input id="tkAmt" class="grow" value="0" inputmode="decimal">
+      <button class="ghost" id="tkMax" style="white-space:nowrap">全部</button>
+    </div>
+    <div class="small" id="tkInfo" style="margin-top:6px">—</div>
+    <div class="row" style="margin-top:10px">
+      <button class="grow" id="tkSend">生成转账交易</button>
+    </div>
+  </section>
+
+  <section class="card" id="newSection" style="display:none">
+    <strong style="font-size:14px">发起新交易</strong>
+    <label>目标合约地址</label>
+    <input id="to" placeholder="0x...">
+    <label>原生币数量（DAI，纯转账用；ERC-20 调用填 0）</label>
+    <input id="value" value="0" inputmode="decimal">
+    <label>calldata（纯转账填 0x）</label>
+    <textarea id="data" placeholder="0x"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="grow" id="btnSubmit">提交（自动第 1 个确认）</button>
+    </div>
+    <div class="small" style="margin-top:8px">
+      提交后，另外两位会在 Telegram 收到通知；他们确认后才能执行。
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<!-- ethers 从 CDN 加载，带备用源 -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js"></script>
+<script>
+  if (typeof ethers === "undefined") {
+    document.write('<script src="https://unpkg.com/ethers@6.17.0/dist/ethers.umd.min.js"><\/script>');
+  }
+</script>
+<script>
+/* Anubis 多签控制台 —— 手机/电脑通用，无需后端 */
+
+const CHAIN_ID_HEX = "0x1a3a"; // 6714
+const RPC = "https://rpc.anubispace.org";
+const EXPLORER = "https://browser.anubispace.org";
+
+const ABI = [
+  "function getOwners() view returns (address[])",
+  "function ownerCount() view returns (uint256)",
+  "function REQUIRED_CONFIRMATIONS() view returns (uint256)",
+  "function transactionCount() view returns (uint256)",
+  "function getTransaction(uint256) view returns (address to, uint256 value, bytes data, bool executed, uint256 numConfirmations)",
+  "function isConfirmed(uint256, address) view returns (bool)",
+  "function submitTransaction(address to, uint256 value, bytes data) returns (uint256)",
+  "function confirmTransaction(uint256 transactionId)",
+  "function revokeConfirmation(uint256 transactionId)",
+  "function executeTransaction(uint256 transactionId) returns (bytes)",
+];
+
+const $ = (id) => document.getElementById(id);
+
+/* 如果 ethers 没加载（例如上传时丢了 vendor 目录），给出明确提示，而不是只报错。 */
+if (typeof ethers === "undefined") {
+  const box = document.createElement("div");
+  box.style.cssText =
+    "margin:12px;padding:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;font-size:13px;line-height:1.6";
+  box.textContent =
+    "页面组件未加载（ethers 缺失）。请改用单文件版 panel-standalone.html，或确认 vendor/ethers.umd.min.js 已上传。";
+  document.body.insertBefore(box, document.body.firstChild);
+  throw new Error("ethers is not loaded");
+}
+
+let provider = null;      // 钱包 provider
+let signer = null;
+let account = null;
+let multisig = null;
+let ro = null;            // 只读合约
+let rw = null;            // 可写合约
+let isOwner = false;
+let threshold = 2;
+
+function toast(message, ms = 4000) {
+  const el = $("toast");
+  el.textContent = message;
+  el.style.display = "block";
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => (el.style.display = "none"), ms);
+}
+
+function friendly(err) {
+  const m = (err && (err.shortMessage || err.message)) || String(err);
+  if (/NotOwner/i.test(m)) return "当前钱包不是这个多签的所有者";
+  if (/AlreadyExecuted/i.test(m)) return "这笔交易已经执行过了";
+  if (/AlreadyConfirmed/i.test(m)) return "你已经确认过这笔交易";
+  if (/NotConfirmed/i.test(m)) return "你没有确认过这笔交易，无法撤销";
+  if (/InsufficientConfirmations/i.test(m)) return "确认数不足，需要 2 个";
+  if (/user rejected|ACTION_REJECTED/i.test(m)) return "你在钱包里取消了操作";
+  if (/insufficient funds/i.test(m)) return "钱包余额不够付 gas";
+  return m;
+}
+
+async function connect() {
+  if (!window.ethereum) {
+    toast("未检测到钱包。请用 MetaMask App 的内置浏览器打开本页。", 8000);
+    return;
+  }
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    const accounts = await provider.send("eth_requestAccounts", []);
+    account = accounts[0];
+    signer = await provider.getSigner();
+    $("account").textContent = account;
+    $("status").textContent = `${account.slice(0, 6)}…${account.slice(-4)}`;
+    $("status").classList.add("on");
+    $("btnConnect").textContent = "重新连接";
+    await checkChain();
+    await load();
+  } catch (err) {
+    toast(friendly(err));
+  }
+}
+
+async function checkChain() {
+  if (!provider) return false;
+  const hex = await provider.send("eth_chainId", []);
+  const ok = hex.toLowerCase() === CHAIN_ID_HEX;
+  $("chainWarn").style.display = ok ? "none" : "block";
+  return ok;
+}
+
+async function switchChain() {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: CHAIN_ID_HEX }],
+    });
+  } catch (err) {
+    if (err.code === 4902) {
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: CHAIN_ID_HEX,
+            chainName: "Anubis",
+            nativeCurrency: { name: "DAI", symbol: "DAI", decimals: 18 },
+            rpcUrls: [RPC],
+            blockExplorerUrls: [EXPLORER],
+          },
+        ],
+      });
+    } else {
+      toast(friendly(err));
+      return;
+    }
+  }
+  await checkChain();
+}
+
+async function load() {
+  const input = ($("multisig").value || localStorage.getItem("anubis.multisig") || "").trim();
+  if (!ethers.isAddress(input)) {
+    if (input) toast("多签地址格式不正确");
+    return;
+  }
+  multisig = ethers.getAddress(input);
+  localStorage.setItem("anubis.multisig", multisig);
+  $("multisig").value = multisig;
+
+  const readProvider = provider || new ethers.JsonRpcProvider(RPC);
+  ro = new ethers.Contract(multisig, ABI, readProvider);
+  rw = signer ? new ethers.Contract(multisig, ABI, signer) : null;
+
+  try {
+    const [owners, count, balance, thr] = await Promise.all([
+      ro.getOwners(),
+      ro.transactionCount(),
+      readProvider.getBalance(multisig),
+      ro.REQUIRED_CONFIRMATIONS(),
+    ]);
+
+    threshold = Number(thr);
+    isOwner = account ? owners.map((o) => o.toLowerCase()).includes(account.toLowerCase()) : false;
+
+    $("multisigInfo").innerHTML =
+      `余额：<b>${ethers.formatEther(balance)}</b> DAI<br>` +
+      `交易总数：<b>${count}</b><br>` +
+      `阈值：<b>${threshold} / ${owners.length}</b><br>` +
+      `所有者：<br>` +
+      owners.map((o, i) => `&nbsp;&nbsp;${i + 1}. ${o}${o.toLowerCase() === (account || "").toLowerCase() ? " ← 你" : ""}`).join("<br>") +
+      (account && !isOwner ? `<br><span style="color:#dc2626">当前钱包不是所有者，只能查看</span>` : "");
+
+    $("txSection").style.display = "block";
+    $("newSection").style.display = isOwner ? "block" : "none";
+    $("genSection").style.display = isOwner ? "block" : "none";
+    $("helixSection").style.display = isOwner ? "block" : "none";
+    $("dataSection").style.display = "block";
+    $("assetSection").style.display = "block";
+    $("tokenSection").style.display = "block";
+    $("swapPage").style.display = "block";
+    $("powerPage").style.display = "block";
+    $("communityPage").style.display = "block";
+    [
+      "assetApprove",
+      "assetRevoke",
+      "assetMint",
+      "tkSend",
+      "swApprove",
+      "swSwap",
+      "pwApprove",
+      "pwGo",
+    ].forEach((id) => {
+      if ($(id)) $(id).disabled = !isOwner;
+    });
+    loadSwapBalances();
+    loadPowerData();
+    loadCommunityData();
+    loadAssetData();
+    loadHelixData();
+
+    const list = $("txList");
+    list.innerHTML = "";
+    if (count === 0n) {
+      list.innerHTML = '<div class="small">还没有任何交易。</div>';
+      return;
+    }
+
+    for (let i = count - 1n; i >= 0n; i--) {
+      const t = await ro.getTransaction(i);
+      const mine = account ? await ro.isConfirmed(i, account) : false;
+      list.appendChild(renderTx(i, t, mine));
+    }
+  } catch (err) {
+    toast(friendly(err));
+  }
+}
+
+function renderTx(id, t, mine) {
+  const card = document.createElement("div");
+  card.className = "tx";
+
+  const done = t.executed;
+  const confirms = Number(t.numConfirmations);
+  const dataText = t.data === "0x" ? "0x（纯转账）" : t.data;
+  const canExecute = !done && confirms >= threshold && isOwner;
+  const canConfirm = !done && !mine && isOwner;
+  const canRevoke = !done && mine && isOwner;
+
+  card.innerHTML =
+    `<h3>#${id} ${done ? '<span class="badge b-done">已执行</span>' : `<span class="badge b-wait">${confirms}/${threshold} 确认</span>`}</h3>` +
+    `<div class="small">目标：${t.to}<br>原生币：${ethers.formatEther(t.value)}</div>` +
+    `<pre>${dataText}</pre>`;
+
+  const bar = document.createElement("div");
+  bar.className = "row";
+  bar.style.marginTop = "10px";
+
+  const mk = (text, cls, handler, disabled) => {
+    const b = document.createElement("button");
+    b.textContent = text;
+    if (cls) b.className = cls;
+    b.disabled = !!disabled;
+    b.onclick = handler;
+    bar.appendChild(b);
+  };
+
+  if (canConfirm) mk("确认", "ok", () => act(() => rw.confirmTransaction(id)));
+  if (canRevoke) mk("撤销", "ghost", () => act(() => rw.revokeConfirmation(id)));
+  if (canExecute) mk("执行", "", () => act(() => rw.executeTransaction(id)));
+  if (!canConfirm && !canRevoke && !canExecute) {
+    const span = document.createElement("span");
+    span.className = "small";
+    span.textContent = done ? "已完成" : mine ? "等待另一位所有者确认" : "等待确认";
+    bar.appendChild(span);
+  }
+
+  card.appendChild(bar);
+  return card;
+}
+
+async function act(fn) {
+  if (!signer) {
+    toast("请先连接钱包");
+    return;
+  }
+  try {
+    toast("请在钱包中确认这笔交易…", 8000);
+    const tx = await fn();
+    const rc = await tx.wait();
+    toast("已上链：" + rc.hash.slice(0, 10) + "…");
+    await load();
+  } catch (err) {
+    toast(friendly(err), 6000);
+  }
+}
+
+async function submitTx() {
+  if (!rw) {
+    toast("请先连接钱包");
+    return;
+  }
+  const to = ($("to").value || "").trim();
+  const valueText = ($("value").value || "0").trim();
+  const data = ($("data").value || "0x").trim() || "0x";
+
+  if (!ethers.isAddress(to)) {
+    toast("目标地址格式不正确");
+    return;
+  }
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(data)) {
+    toast("calldata 必须是 0x 开头的十六进制");
+    return;
+  }
+
+  let value;
+  try {
+    value = ethers.parseEther(valueText);
+  } catch {
+    toast("原生币数量格式不正确");
+    return;
+  }
+
+  try {
+    toast("请在钱包中确认…", 8000);
+    const tx = await rw.submitTransaction(to, value, data);
+    await tx.wait();
+    toast("已提交，自动完成第 1 个确认");
+    $("to").value = "";
+    $("value").value = "0";
+    $("data").value = "";
+    await load();
+  } catch (err) {
+    toast(friendly(err), 6000);
+  }
+}
+
+function makeCalldata() {
+  const sig = ($("sig").value || "").trim();
+  const argsText = ($("sigArgs").value || "").trim();
+
+  if (!/^[A-Za-z_][A-Za-z0-9_]*\(.*\)$/.test(sig)) {
+    toast("函数签名格式：deposit(uint256)");
+    return;
+  }
+
+  try {
+    const iface = new ethers.Interface([`function ${sig}`]);
+    const frag = iface.getFunction(sig);
+    const types = frag.inputs.map((i) => i.type);
+    const raw = argsText
+      ? argsText.split(",").map((s) => s.trim()).filter((s) => s !== "")
+      : [];
+
+    if (raw.length !== types.length) {
+      throw new Error(`需要 ${types.length} 个参数（${types.join(", ")}），收到 ${raw.length} 个`);
+    }
+
+    const args = raw.map((v, i) =>
+      types[i].endsWith("]") || types[i].startsWith("tuple") ? JSON.parse(v) : v
+    );
+
+    $("data").value = iface.encodeFunctionData(frag, args);
+    toast("已生成 calldata 并填入下方");
+    $("data").scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (err) {
+    toast("生成失败：" + (err.message || err), 6000);
+  }
+}
+
+/* ================= Helix 快捷操作 ================= */
+
+const HELIX = {
+  dai: "0x83fd06F0846d9D90B3016bF670Efe2E0B11cDe14",
+  ailgns: "0x256EdB652db43E721EC6A12B6b51b6967D3bb8cB",
+  lgns: "0x4D1D808a081FdAc440703b3765FC61f8028C06B8",
+  ve: "0x52D7f7745D4Ba3dE6C3A0B503815878aeE7eDf14",
+  turbine: "0xE884A336550a4482Ca6A17A3F93aa30Ed4eD9BaD",
+  power: "0x9E68F61E2615cc1D2C4a2D0026bFc1EBFdf68C1b",
+  router: "0x0527935979d10685B8571Fa02A8DEDbd6f3024E3",
+  community: "0xc9f9a8a2dBf8188AD6610e0239105CAbE67c4993",
+  emission: "0x6AaB661E1a99B20D1Dae581Ab0e1250E6f753a19",
+  productionNft: "0x77E6ab1C5557FD456b0656304E0e5c02a6d7DcCA",
+  factory: "0xB39d8759d59592363395E4c66a3d4E4ACc9bc09D",
+};
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+const u = (v) => ethers.parseUnits(String(v || "0").trim(), 18);
+const deadlineFrom = (mins) => BigInt(Math.floor(Date.now() / 1000) + Math.max(1, Number(mins || 20)) * 60);
+const idList = (v) => String(v || "").split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+
+const tokenOf = (label) => (label === "AiLGNS" ? HELIX.ailgns : HELIX.dai);
+
+const PRESETS = [
+  {
+    group: "涡轮 Turbine",
+    items: [
+      {
+        title: "授权 DAI 给涡轮",
+        desc: "DAI.approve(Turbine, 数量)",
+        target: HELIX.dai,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (DAI)", def: "100" }],
+        args: (f) => [HELIX.turbine, u(f.amt)],
+      },
+      {
+        title: "参与涡轮 activate",
+        desc: "Turbine.activate(amount, maxDaiIn, deadline)",
+        target: HELIX.turbine,
+        sig: "function activate(uint256,uint256,uint256)",
+        fields: [
+          { k: "amount", label: "AiLGNS 数量", def: "100" },
+          { k: "maxDai", label: "最多花 DAI", def: "100" },
+          { k: "mins", label: "有效期(分钟)", def: "20" },
+        ],
+        args: (f) => [u(f.amount), u(f.maxDai), deadlineFrom(f.mins)],
+      },
+      {
+        title: "领取到期锁仓",
+        desc: "Turbine.claimUnlocked(uint256[] ids)",
+        target: HELIX.turbine,
+        sig: "function claimUnlocked(uint256[])",
+        fields: [{ k: "ids", label: "锁仓 ID（逗号分隔）", def: "" }],
+        args: (f) => [idList(f.ids)],
+      },
+    ],
+  },
+  {
+    group: "算力 Power",
+    items: [
+      {
+        title: "用 DAI 参与算力",
+        desc: "PowerLedger.participate(daiAmount)",
+        target: HELIX.power,
+        sig: "function participate(uint256)",
+        fields: [{ k: "dai", label: "DAI 数量", def: "10" }],
+        args: (f) => [u(f.dai)],
+      },
+      {
+        title: "销毁 LGNS 换算力",
+        desc: "PowerLedger.burnForPower(lgnsAmount)",
+        target: HELIX.power,
+        sig: "function burnForPower(uint256)",
+        fields: [{ k: "lgns", label: "LGNS 数量", def: "10" }],
+        args: (f) => [u(f.lgns)],
+      },
+      {
+        title: "销毁 AiLGNS 换算力",
+        desc: "PowerLedger.burnAilgnsForPower(amount, minPower, deadline)",
+        target: HELIX.power,
+        sig: "function burnAilgnsForPower(uint256,uint256,uint256)",
+        fields: [
+          { k: "amount", label: "AiLGNS 数量", def: "10" },
+          { k: "minPower", label: "最少获得算力", def: "0" },
+          { k: "mins", label: "有效期(分钟)", def: "20" },
+        ],
+        args: (f) => [u(f.amount), String(f.minPower || "0"), deadlineFrom(f.mins)],
+      },
+      {
+        title: "释放燃烧队列",
+        desc: "PowerLedger.releaseBurnQueue(maxEntries)",
+        target: HELIX.power,
+        sig: "function releaseBurnQueue(uint256)",
+        fields: [{ k: "n", label: "最多处理条数", def: "20" }],
+        args: (f) => [String(f.n || "20")],
+      },
+    ],
+  },
+  {
+    group: "veAiLGNS",
+    items: [
+      {
+        title: "锁仓生成 veAiLGNS",
+        desc: "VE.createLock(amount, lockEpochs)",
+        target: HELIX.ve,
+        sig: "function createLock(uint256,uint256)",
+        fields: [
+          { k: "amount", label: "AiLGNS 数量", def: "100" },
+          { k: "epochs", label: "锁定纪元数", def: "12" },
+        ],
+        args: (f) => [u(f.amount), String(f.epochs || "1")],
+      },
+      {
+        title: "永久锁仓",
+        desc: "VE.createPermanent(amount)",
+        target: HELIX.ve,
+        sig: "function createPermanent(uint256)",
+        fields: [{ k: "amount", label: "AiLGNS 数量", def: "100" }],
+        args: (f) => [u(f.amount)],
+      },
+      {
+        title: "领回已解锁仓位",
+        desc: "VE.claimUnlocked(id)",
+        target: HELIX.ve,
+        sig: "function claimUnlocked(uint256)",
+        fields: [{ k: "id", label: "仓位 ID", def: "" }],
+        args: (f) => [String(f.id || "0")],
+      },
+    ],
+  },
+  {
+    group: "Swap（HelixRouter）",
+    items: [
+      {
+        title: "授权给 Router",
+        desc: "DAI.approve(Router, 数量)",
+        target: HELIX.dai,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (DAI)", def: "100" }],
+        args: (f) => [HELIX.router, u(f.amt)],
+      },
+      {
+        title: "精确输入兑换",
+        desc: "Router.swapExactIn(tokenIn, tokenOut, amountIn, minOut, to, deadline)",
+        target: HELIX.router,
+        sig: "function swapExactIn(address,address,uint256,uint256,address,uint256)",
+        fields: [
+          { k: "tokenIn", label: "卖出", type: "select", options: ["DAI", "AiLGNS"], def: "DAI" },
+          { k: "tokenOut", label: "买入", type: "select", options: ["DAI", "AiLGNS"], def: "AiLGNS" },
+          { k: "amountIn", label: "卖出数量", def: "10" },
+          { k: "slip", label: "滑点 %", def: "1" },
+          { k: "mins", label: "有效期(分钟)", def: "20" },
+        ],
+        args: async (f) => {
+          const ti = tokenOf(f.tokenIn);
+          const to = tokenOf(f.tokenOut);
+          if (ti === to) throw new Error("卖出和买入不能是同一种代币");
+          const amountIn = u(f.amountIn);
+          const rp = provider || new ethers.JsonRpcProvider(RPC);
+          const routerRead = new ethers.Contract(
+            HELIX.router,
+            ["function quoteExactIn(address,address,uint256) view returns (uint256)"],
+            rp
+          );
+          let minOut = 0n;
+          try {
+            const q = await routerRead.quoteExactIn(ti, to, amountIn);
+            const bps = BigInt(Math.round(Number(f.slip || 1) * 100));
+            minOut = q - (q * bps) / 10000n;
+          } catch {
+            minOut = 0n;
+          }
+          return [ti, to, amountIn, minOut, multisig, deadlineFrom(f.mins)];
+        },
+      },
+    ],
+  },
+  {
+    group: "社区增长",
+    items: [
+      {
+        title: "加入推荐关系",
+        desc: "Community.join(referer)",
+        target: HELIX.community,
+        sig: "function join(address)",
+        fields: [{ k: "referer", label: "推荐人地址（留空=0x0）", def: "" }],
+        args: (f) => [(f.referer || "").trim() || ZERO],
+      },
+    ],
+  },
+  {
+    group: "生产权 NFT（铸造在工厂合约）",
+    items: [
+      {
+        title: "授权 LGNS 给工厂",
+        desc: "LGNS.approve(工厂, 数量) —— 铸造前必须先授权",
+        target: HELIX.lgns,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (LGNS)", def: "100" }],
+        args: (f) => [HELIX.factory, u(f.amt)],
+      },
+      {
+        title: "授权 AiLGNS 给工厂",
+        desc: "AiLGNS.approve(工厂, 数量)",
+        target: HELIX.ailgns,
+        sig: "function approve(address,uint256)",
+        fields: [{ k: "amt", label: "数量 (AiLGNS)", def: "100" }],
+        args: (f) => [HELIX.factory, u(f.amt)],
+      },
+      {
+        title: "铸造 NFT（销毁 LGNS）",
+        desc: "Factory.mintWithLGNS(amount, minCapacity, deadline) —— 2.0 倍额度",
+        target: HELIX.factory,
+        sig: "function mintWithLGNS(uint256,uint256,uint256)",
+        fields: [
+          { k: "amount", label: "销毁 LGNS 数量", def: "10" },
+          { k: "minCapacity", label: "最少额度 (DAI)", def: "0" },
+          { k: "mins", label: "有效期(分钟)", def: "20" },
+        ],
+        args: (f) => [u(f.amount), u(f.minCapacity), deadlineFrom(f.mins)],
+      },
+      {
+        title: "铸造 NFT（销毁 AiLGNS）",
+        desc: "Factory.mintWithAiLGNS(amount, minCapacity, deadline) —— 3.0 倍额度",
+        target: HELIX.factory,
+        sig: "function mintWithAiLGNS(uint256,uint256,uint256)",
+        fields: [
+          { k: "amount", label: "销毁 AiLGNS 数量", def: "10" },
+          { k: "minCapacity", label: "最少额度 (DAI)", def: "0" },
+          { k: "mins", label: "有效期(分钟)", def: "20" },
+        ],
+        args: (f) => [u(f.amount), u(f.minCapacity), deadlineFrom(f.mins)],
+      },
+      {
+        title: "混合铸造（当前未开放）",
+        desc: "Factory.mintMixed(lgnsAmount, ailgnsAmount, minCapacity, deadline)",
+        note: "链上 mixedEnabled = false，现在调用会失败。等官方开放后再用。",
+      },
+      {
+        title: "解除授权（LGNS → 工厂）",
+        desc: "LGNS.approve(工厂, 0)",
+        target: HELIX.lgns,
+        sig: "function approve(address,uint256)",
+        fields: [],
+        args: () => [HELIX.factory, 0n],
+      },
+      {
+        title: "生产权 NFT 不可转让",
+        desc: "",
+        note:
+          "DApp 原文：「Production NFTs are not transferable unless the protocol opens transfers.」它是绑定账户的生产权益凭证，没有转移接口，调用 transferFrom 会失败。因此这里不提供转移按钮。",
+      },
+    ],
+  },
+  {
+    group: "排放 Emission",
+    items: [
+      {
+        title: "排放是只读的",
+        desc: "",
+        note:
+          "EmissionSchedule 没有用户可调用的写函数，只能查询每个纪元/每日的预算。用区块浏览器查看即可，不需要多签操作。",
+      },
+    ],
+  },
+];
+
+/* 这些板块已经有专属页面（資產 / 算力 / 兌換），不再在快捷列表里重复出现 */
+const SUPERSEDED_GROUPS = new Set([
+  "算力 Power",
+  "Swap（HelixRouter）",
+  "生产权 NFT（铸造在工厂合约）",
+]);
+
+function renderHelix() {
+  const root = $("helixList");
+  if (!root) return;
+  root.innerHTML = "";
+
+  for (const group of PRESETS) {
+    if (SUPERSEDED_GROUPS.has(group.group)) continue;
+    const gd = document.createElement("div");
+    gd.className = "hx-group";
+    const h = document.createElement("h4");
+    h.textContent = group.group;
+    gd.appendChild(h);
+
+    for (const item of group.items) {
+      const box = document.createElement("div");
+      box.className = "hx";
+
+      const title = document.createElement("div");
+      title.className = "hx-title";
+      title.textContent = item.title;
+      box.appendChild(title);
+
+      if (item.note) {
+        const note = document.createElement("div");
+        note.className = "hx-desc";
+        note.style.fontFamily = "inherit";
+        note.textContent = item.note;
+        box.appendChild(note);
+        gd.appendChild(box);
+        continue;
+      }
+
+      if (item.desc) {
+        const desc = document.createElement("div");
+        desc.className = "hx-desc";
+        desc.textContent = item.desc;
+        box.appendChild(desc);
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "hx-fields";
+      const inputs = {};
+
+      for (const f of item.fields || []) {
+        const label = document.createElement("label");
+        label.textContent = f.label;
+        let el;
+        if (f.type === "select") {
+          el = document.createElement("select");
+          for (const opt of f.options) {
+            const o = document.createElement("option");
+            o.value = opt;
+            o.textContent = opt;
+            el.appendChild(o);
+          }
+          el.value = f.def || f.options[0];
+        } else {
+          el = document.createElement("input");
+          el.value = f.def || "";
+        }
+        inputs[f.k] = el;
+        label.appendChild(el);
+        grid.appendChild(label);
+      }
+      box.appendChild(grid);
+
+      const btn = document.createElement("button");
+      btn.textContent = "生成并填入下方";
+      btn.onclick = async () => {
+        try {
+          await fillFromPreset(item, inputs);
+        } catch (err) {
+          toast("生成失败：" + (err.shortMessage || err.message), 6000);
+        }
+      };
+      box.appendChild(btn);
+      gd.appendChild(box);
+    }
+    root.appendChild(gd);
+  }
+}
+
+async function fillFromPreset(item, inputs) {
+  const values = {};
+  for (const key of Object.keys(inputs)) values[key] = inputs[key].value;
+
+  const iface = new ethers.Interface([item.sig]);
+  const fnName = item.sig.slice("function ".length, item.sig.indexOf("("));
+  const fragment = iface.getFunction(fnName);
+  const args = await item.args(values);
+  const data = iface.encodeFunctionData(fragment, args);
+
+  $("to").value = item.target;
+  $("value").value = "0";
+  $("data").value = data;
+  $("newSection").style.display = "block";
+  toast("已生成：" + item.title + "，检查后提交");
+  $("newSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadHelixData() {
+  const box = $("dataList");
+  if (!box) return;
+  const who = multisig || ($("multisig").value || "").trim();
+  if (!who || !ethers.isAddress(who)) {
+    box.textContent = "请先载入多签地址";
+    return;
+  }
+  box.textContent = "读取中…";
+
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const mk = (addr, abi) => new ethers.Contract(addr, abi, rp);
+  const fmt = (v) =>
+    Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const safe = async (fn) => {
+    try {
+      return await fn();
+    } catch {
+      return null;
+    }
+  };
+
+  const nft = mk(HELIX.productionNft, [
+    "function balanceOf(address) view returns (uint256)",
+    "function remainingOf(address) view returns (uint256)",
+  ]);
+  const fac = mk(HELIX.factory, [
+    "function lgnsMultiplierBps() view returns (uint32)",
+    "function ailgnsMultiplierBps() view returns (uint32)",
+    "function mixedEnabled() view returns (bool)",
+  ]);
+  const tur = mk(HELIX.turbine, [
+    "function lockedBalanceOf(address) view returns (uint256)",
+    "function claimableOf(address) view returns (uint256)",
+    "function locksOf(address) view returns (uint256[])",
+  ]);
+  const pow = mk(HELIX.power, [
+    "function totalPowerOf(address) view returns (uint256)",
+    "function activePowerOf(address) view returns (uint256)",
+    "function pendingPowerOf(address) view returns (uint256)",
+  ]);
+  const ve = mk(HELIX.ve, ["function positionsOf(address) view returns (uint256[])"]);
+  const rt = mk(HELIX.router, [
+    "function quoteExactIn(address,address,uint256) view returns (uint256)",
+  ]);
+  const com = mk(HELIX.community, [
+    "function members(address) view returns (uint256 level, address referrer)",
+  ]);
+
+  const [nftBal, rem, lnM, aiM, mixed, locked, claimable, locks, totalPower, activePower, pendingPower, positions, quote, member] =
+    await Promise.all([
+      safe(() => nft.balanceOf(who)),
+      safe(() => nft.remainingOf(who)),
+      safe(() => fac.lgnsMultiplierBps()),
+      safe(() => fac.ailgnsMultiplierBps()),
+      safe(() => fac.mixedEnabled()),
+      safe(() => tur.lockedBalanceOf(who)),
+      safe(() => tur.claimableOf(who)),
+      safe(() => tur.locksOf(who)),
+      safe(() => pow.totalPowerOf(who)),
+      safe(() => pow.activePowerOf(who)),
+      safe(() => pow.pendingPowerOf(who)),
+      safe(() => ve.positionsOf(who)),
+      safe(() => rt.quoteExactIn(HELIX.dai, HELIX.ailgns, ethers.parseUnits("1", 18))),
+      safe(() => com.members(who)),
+    ]);
+
+  const x = (v) => (v === null || v === undefined ? "—" : Number(v) / 10000 + "×");
+  const sections = [
+    [
+      "生产权 NFT",
+      [
+        ["持有 NFT", nftBal === null ? "—" : nftBal.toString() + " 个"],
+        ["剩余额度", rem === null ? "—" : fmt(rem) + " DAI"],
+        ["倍数", `LGNS ${x(lnM)} / AiLGNS ${x(aiM)} / 混合${mixed === false ? "未开放" : mixed === null ? "—" : "已开放"}`],
+      ],
+    ],
+    [
+      "涡轮 Turbine",
+      [
+        ["已锁额度", locked === null ? "—" : fmt(locked)],
+        ["可领取", claimable === null ? "—" : fmt(claimable)],
+        ["锁仓笔数", locks === null ? "—" : locks.length.toString()],
+      ],
+    ],
+    [
+      "算力",
+      [
+        ["总算力", totalPower === null ? "—" : fmt(totalPower)],
+        ["活跃算力", activePower === null ? "—" : fmt(activePower)],
+        ["待结算", pendingPower === null ? "—" : fmt(pendingPower)],
+      ],
+    ],
+    ["veAiLGNS", [["仓位数量", positions === null ? "—" : positions.length.toString()]]],
+    ["Swap 参考价", [["1 DAI ≈", quote === null || quote === 0n ? "无报价" : fmt(quote) + " AiLGNS"]]],
+    ["社区", [["等级", member === null ? "—" : member.level.toString()]]],
+  ];
+
+  box.innerHTML = sections
+    .map(
+      ([title, rows]) =>
+        `<div style="margin-bottom:10px"><b>${title}</b><br>` +
+        rows.map(([k, v]) => `${k}：${v}`).join("<br>") +
+        "</div>"
+    )
+    .join("");
+}
+
+/* ================= 生產權 NFT（复刻 DApp 资产页） ================= */
+
+const FACTORY_ABI = [
+  "function previewCapacity(uint8 mode, uint256 lgnsAmount, uint256 ailgnsAmount) view returns ((uint8 burnMode, uint32 multiplierBps, uint32 parameterVersion, uint256 lgnsAmount, uint256 ailgnsAmount, uint256 lgnsPriceDai, uint256 ailgnsPriceDai, uint256 burnValueDai, uint256 initialCapacityDai) params, bool pricesFresh)",
+  "function lgnsMultiplierBps() view returns (uint32)",
+  "function ailgnsMultiplierBps() view returns (uint32)",
+  "function mixedEnabled() view returns (bool)",
+  "function lgnsTwapPrice() view returns (uint256)",
+];
+
+let assetMode = 1;
+let assetBal = { lgns: 0n, ailgns: 0n };
+let assetPreviewCap = 0n;
+let previewTimer = null;
+
+const fmt4 = (v) =>
+  Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+function fillTx(target, data, label) {
+  $("to").value = target;
+  $("value").value = "0";
+  $("data").value = data;
+  $("newSection").style.display = "block";
+  toast("已生成：" + label + "，核对后提交");
+  $("newSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadAssetData() {
+  const who = multisig;
+  if (!who) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const nft = new ethers.Contract(
+    HELIX.productionNft,
+    ["function balanceOf(address) view returns (uint256)", "function remainingOf(address) view returns (uint256)"],
+    rp
+  );
+  const fac = new ethers.Contract(HELIX.factory, FACTORY_ABI, rp);
+  const lgns = new ethers.Contract(HELIX.lgns, ["function balanceOf(address) view returns (uint256)"], rp);
+  const ailgns = new ethers.Contract(HELIX.ailgns, ["function balanceOf(address) view returns (uint256)"], rp);
+
+  try {
+    const [rem, count, l, a, price] = await Promise.all([
+      nft.remainingOf(who),
+      nft.balanceOf(who),
+      lgns.balanceOf(who),
+      ailgns.balanceOf(who),
+      fac.lgnsTwapPrice().catch(() => null),
+    ]);
+    assetBal = { lgns: l, ailgns: a };
+    $("assetRemain").textContent = fmt4(rem);
+    $("assetCount").textContent = count.toString();
+    $("assetInitial").textContent = count === 0n ? "0 DAI" : "见明细";
+    $("assetUsed").textContent = count === 0n ? "0 DAI" : "见明细";
+    $("assetPrice").textContent = price === null ? "" : `LGNS 参考价 ${fmt4(price)} DAI`;
+    updateAssetPreview();
+  } catch (err) {
+    $("assetRemain").textContent = "读取失败";
+  }
+}
+
+async function updateAssetPreview() {
+  const sym = assetMode === 3 ? "AiLGNS" : "LGNS";
+  const bal = assetMode === 3 ? assetBal.ailgns : assetBal.lgns;
+  $("assetHint").textContent = `可用 ${fmt4(bal)} ${sym}　最少额度按 0 提交（建议先在 DApp 核对预计额度）`;
+  assetPreviewCap = 0n;
+}
+
+function assetApprove(revoke) {
+  const token = assetMode === 3 ? HELIX.ailgns : HELIX.lgns;
+  let amount = 0n;
+  if (!revoke) {
+    try {
+      amount = ethers.parseUnits(String($("assetAmount").value || "0"), 18);
+    } catch {
+      amount = 0n;
+    }
+  }
+  const iface = new ethers.Interface(["function approve(address,uint256)"]);
+  fillTx(token, iface.encodeFunctionData("approve", [HELIX.factory, amount]), revoke ? "解除授權" : "授權");
+}
+
+function assetMint() {
+  let amount;
+  try {
+    amount = ethers.parseUnits(String($("assetAmount").value || "0"), 18);
+  } catch {
+    toast("銷毀數量格式不正确");
+    return;
+  }
+  if (amount === 0n) {
+    toast("请填写銷毀數量");
+    return;
+  }
+  const fn = assetMode === 3 ? "mintWithAiLGNS" : "mintWithLGNS";
+  const iface = new ethers.Interface([`function ${fn}(uint256,uint256,uint256)`]);
+  const minCapacity = assetPreviewCap > 0n ? (assetPreviewCap * 99n) / 100n : 0n;
+  fillTx(HELIX.factory, iface.encodeFunctionData(fn, [amount, minCapacity, deadlineFrom(20)]), "鑄造 NFT");
+}
+
+/* ================= 代币转账 ================= */
+
+let tkDecimals = 18;
+let tkSymbol = "";
+let tkBalance = 0n;
+let tkTimer = null;
+
+async function loadTokenInfo() {
+  const info = $("tkInfo");
+  const addr = ($("tkAddr").value || "").trim();
+  if (!addr) {
+    info.textContent = "—";
+    return;
+  }
+  if (!ethers.isAddress(addr)) {
+    info.textContent = "地址格式不正确";
+    return;
+  }
+
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const token = new ethers.Contract(
+    addr,
+    [
+      "function symbol() view returns (string)",
+      "function decimals() view returns (uint8)",
+      "function balanceOf(address) view returns (uint256)",
+    ],
+    rp
+  );
+
+  try {
+    const [sym, dec] = await Promise.all([
+      token.symbol().catch(() => "TOKEN"),
+      token.decimals().catch(() => 18),
+    ]);
+    tkSymbol = sym;
+    tkDecimals = Number(dec);
+    tkBalance = multisig ? await token.balanceOf(multisig).catch(() => 0n) : 0n;
+    info.textContent = `${sym} · 精度 ${dec} · 多签余额 ${ethers.formatUnits(tkBalance, dec)}`;
+  } catch {
+    info.textContent = "读取失败：可能不是标准 ERC-20 合约";
+  }
+}
+
+function tokenSend() {
+  const addr = ($("tkAddr").value || "").trim();
+  const to = ($("tkTo").value || "").trim();
+
+  if (!ethers.isAddress(addr)) {
+    toast("代币合约地址不正确");
+    return;
+  }
+  if (!ethers.isAddress(to)) {
+    toast("收款地址不正确");
+    return;
+  }
+
+  let amount;
+  try {
+    amount = ethers.parseUnits(String($("tkAmt").value || "0").trim(), tkDecimals);
+  } catch {
+    toast("数量格式不正确");
+    return;
+  }
+  if (amount === 0n) {
+    toast("数量不能为 0");
+    return;
+  }
+
+  const iface = new ethers.Interface(["function transfer(address,uint256) returns (bool)"]);
+  fillTx(addr, iface.encodeFunctionData("transfer", [to, amount]), `代币转账 ${tkSymbol || ""}`.trim());
+}
+
+/* ================= 兌換 ================= */
+
+const ROUTER_ABI = ["function quoteExactIn(address,address,uint256) view returns (uint256)"];
+let swBal = { DAI: 0n, AiLGNS: 0n };
+let swQuote = null;
+let swTimer = null;
+
+const tokAddr = (sym) => (sym === "DAI" ? HELIX.dai : HELIX.ailgns);
+
+async function readBal(rp, token, who) {
+  try {
+    const c = new ethers.Contract(token, ["function balanceOf(address) view returns (uint256)"], rp);
+    return await c.balanceOf(who);
+  } catch {
+    return 0n;
+  }
+}
+
+async function loadSwapBalances() {
+  if (!multisig) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const [d, a] = await Promise.all([readBal(rp, HELIX.dai, multisig), readBal(rp, HELIX.ailgns, multisig)]);
+  swBal = { DAI: d, AiLGNS: a };
+  $("swBalIn").textContent = "餘額 " + fmt4(swBal[$("swFrom").value]);
+  $("swBalOut").textContent = "餘額 " + fmt4(swBal[$("swTo").value]);
+}
+
+async function updateSwapQuote() {
+  const from = $("swFrom").value;
+  const to = $("swTo").value;
+  $("swBalIn").textContent = "餘額 " + fmt4(swBal[from]);
+  $("swBalOut").textContent = "餘額 " + fmt4(swBal[to]);
+
+  if (from === to) {
+    $("swOut").value = "0";
+    $("swMin").textContent = "—";
+    swQuote = null;
+    return;
+  }
+
+  let amt;
+  try {
+    amt = ethers.parseUnits(String($("swIn").value || "0"), 18);
+  } catch {
+    return;
+  }
+  if (amt === 0n) {
+    $("swOut").value = "0";
+    $("swMin").textContent = "—";
+    swQuote = null;
+    return;
+  }
+
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  try {
+    const router = new ethers.Contract(HELIX.router, ROUTER_ABI, rp);
+    const q = await router.quoteExactIn(tokAddr(from), tokAddr(to), amt);
+    const slip = Math.max(0, Math.min(50, Number($("swSlip").value || 0)));
+    const minOut = q - (q * BigInt(Math.round(slip * 100))) / 10000n;
+    $("swOut").value = ethers.formatUnits(q, 18);
+    $("swMin").textContent = fmt4(minOut) + " " + to;
+    swQuote = { from, to, amt, minOut };
+  } catch {
+    $("swOut").value = "0";
+    $("swMin").textContent = "無報價";
+    swQuote = null;
+  }
+}
+
+function swPct(p) {
+  const bal = swBal[$("swFrom").value] || 0n;
+  $("swIn").value = ethers.formatUnits((bal * BigInt(p)) / 100n, 18);
+  updateSwapQuote();
+}
+
+function swApprove() {
+  const token = tokAddr($("swFrom").value);
+  let amt = 0n;
+  try {
+    amt = ethers.parseUnits(String($("swIn").value || "0"), 18);
+  } catch {}
+  const iface = new ethers.Interface(["function approve(address,uint256)"]);
+  fillTx(token, iface.encodeFunctionData("approve", [HELIX.router, amt]), "授權 Router");
+}
+
+function swSwap() {
+  if (!swQuote) {
+    toast("沒有有效報價，請先輸入數量");
+    return;
+  }
+  const iface = new ethers.Interface([
+    "function swapExactIn(address,address,uint256,uint256,address,uint256)",
+  ]);
+  const data = iface.encodeFunctionData("swapExactIn", [
+    tokAddr(swQuote.from),
+    tokAddr(swQuote.to),
+    swQuote.amt,
+    swQuote.minOut,
+    multisig,
+    deadlineFrom(20),
+  ]);
+  fillTx(HELIX.router, data, "兌換");
+}
+
+/* ================= 算力參與 ================= */
+
+const POWER_ABI = [
+  "function powerRateBps() view returns (uint256)",
+  "function lgnsPowerRate() view returns (uint256)",
+  "function ailgnsPowerRate() view returns (uint256)",
+  "function dailyDaiDepositCap() view returns (uint256)",
+];
+
+let pwMode = "dai";
+let pwBal = { dai: 0n, lgns: 0n, ailgns: 0n };
+let pwRate = { dai: 25000n, lgns: 0n, ailgns: 0n };
+
+async function loadPowerData() {
+  if (!multisig) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const [d, l, a] = await Promise.all([
+    readBal(rp, HELIX.dai, multisig),
+    readBal(rp, HELIX.lgns, multisig),
+    readBal(rp, HELIX.ailgns, multisig),
+  ]);
+  pwBal = { dai: d, lgns: l, ailgns: a };
+
+  try {
+    const c = new ethers.Contract(HELIX.power, POWER_ABI, rp);
+    pwRate.dai = await c.powerRateBps().catch(() => 25000n);
+    pwRate.lgns = await c.lgnsPowerRate().catch(() => 0n);
+    pwRate.ailgns = await c.ailgnsPowerRate().catch(() => 0n);
+    const cap = await c.dailyDaiDepositCap().catch(() => 0n);
+    $("pwCap").textContent = fmt4(cap) + " DAI";
+  } catch {}
+
+  updatePowerUI();
+}
+
+function updatePowerUI() {
+  const sym = pwMode === "dai" ? "DAI" : pwMode === "lgns" ? "LGNS" : "AiLGNS";
+  $("pwSym").textContent = sym;
+  $("pwBal").textContent = fmt4(pwBal[pwMode]) + " " + sym;
+
+  let amt = 0n;
+  try {
+    amt = ethers.parseUnits(String($("pwAmt").value || "0"), 18);
+  } catch {}
+
+  const rate = pwRate[pwMode];
+  const power = (amt * rate) / 10000n;
+  $("pwPower").textContent =
+    fmt4(power) + " DAI" + (rate > 0n ? ` (${Number(rate) / 10000}×)` : "");
+}
+
+function pwPct(p) {
+  $("pwAmt").value = ethers.formatUnits((pwBal[pwMode] * BigInt(p)) / 100n, 18);
+  updatePowerUI();
+}
+
+function pwApprove() {
+  const token =
+    pwMode === "dai" ? HELIX.dai : pwMode === "lgns" ? HELIX.lgns : HELIX.ailgns;
+  let amt = 0n;
+  try {
+    amt = ethers.parseUnits(String($("pwAmt").value || "0"), 18);
+  } catch {}
+  const iface = new ethers.Interface(["function approve(address,uint256)"]);
+  fillTx(token, iface.encodeFunctionData("approve", [HELIX.power, amt]), "授權算力合約");
+}
+
+function pwGo() {
+  let amt = 0n;
+  try {
+    amt = ethers.parseUnits(String($("pwAmt").value || "0"), 18);
+  } catch {
+    toast("數量格式不正確");
+    return;
+  }
+  if (amt === 0n) {
+    toast("請輸入數量");
+    return;
+  }
+
+  if (pwMode === "dai") {
+    const iface = new ethers.Interface(["function participate(uint256)"]);
+    fillTx(HELIX.power, iface.encodeFunctionData("participate", [amt]), "DAI 參與算力");
+  } else if (pwMode === "lgns") {
+    const iface = new ethers.Interface(["function burnForPower(uint256)"]);
+    fillTx(HELIX.power, iface.encodeFunctionData("burnForPower", [amt]), "LGNS 銷毀換算力");
+  } else {
+    const iface = new ethers.Interface([
+      "function burnAilgnsForPower(uint256,uint256,uint256)",
+    ]);
+    fillTx(
+      HELIX.power,
+      iface.encodeFunctionData("burnAilgnsForPower", [amt, 0n, deadlineFrom(20)]),
+      "AiLGNS 銷毀換算力"
+    );
+  }
+}
+
+/* ================= 社區 ================= */
+
+const COM_ABI = [
+  "function members(address) view returns (uint256 level, address referrer)",
+  "function referrals(address,uint256,uint256) view returns (uint256,address[])",
+];
+
+async function loadCommunityData() {
+  if (!multisig) return;
+  const rp = provider || new ethers.JsonRpcProvider(RPC);
+  const c = new ethers.Contract(HELIX.community, COM_ABI, rp);
+
+  $("cmLink").value = `https://awakehelix.io/power#/community?ref=${multisig}`;
+
+  try {
+    const m = await c.members(multisig);
+    $("cmLevel").textContent = m.level.toString();
+    $("cmTeam").textContent = m.level.toString();
+    const ref = m.referrer;
+    $("cmReferrer").textContent = !ref || ref === ZERO ? "—" : ref;
+  } catch {
+    $("cmLevel").textContent = "—";
+  }
+
+  try {
+    const r = await c.referrals(multisig, 0, 50);
+    const total = r[0];
+    const list = r[1];
+    $("cmCount").textContent = total.toString();
+    $("cmList").innerHTML = list.length
+      ? list.map((a, i) => `${i + 1}. ${a}`).join("<br>")
+      : "还没有推荐";
+  } catch {
+    $("cmCount").textContent = "0";
+    $("cmList").textContent = "还没有推荐";
+  }
+}
+
+$("btnConnect").onclick = connect;
+$("btnSwitch").onclick = switchChain;
+$("btnLoad").onclick = load;
+$("btnRefresh").onclick = load;
+$("btnSubmit").onclick = submitTx;
+$("btnGen").onclick = makeCalldata;
+$("btnData").onclick = loadHelixData;
+
+$("assetMax").onclick = () => {
+  const bal = assetMode === 3 ? assetBal.ailgns : assetBal.lgns;
+  $("assetAmount").value = ethers.formatUnits(bal, 18);
+  updateAssetPreview();
+};
+$("assetApprove").onclick = () => assetApprove(false);
+$("assetRevoke").onclick = () => assetApprove(true);
+$("assetMint").onclick = assetMint;
+$("assetAmount").addEventListener("input", () => {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(updateAssetPreview, 400);
+});
+document.querySelectorAll(".mode-btn").forEach((btn) => {
+  btn.onclick = () => {
+    if (btn.disabled) return;
+    assetMode = Number(btn.dataset.mode);
+    document.querySelectorAll(".mode-btn").forEach((x) => {
+      x.style.borderColor = x === btn ? "#2563eb" : "";
+      x.style.fontWeight = x === btn ? "700" : "600";
+    });
+    updateAssetPreview();
+  };
+});
+
+$("tkAddr").addEventListener("input", () => {
+  clearTimeout(tkTimer);
+  tkTimer = setTimeout(loadTokenInfo, 500);
+});
+$("tkMax").onclick = () => {
+  $("tkAmt").value = ethers.formatUnits(tkBalance, tkDecimals);
+};
+$("tkSend").onclick = tokenSend;
+
+/* 頁簽導航 */
+document.querySelectorAll(".tab").forEach((b) => {
+  b.onclick = () => {
+    const el = $(b.dataset.target);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
+  };
+});
+
+/* 兌換 */
+document.querySelectorAll("[data-pct]").forEach((b) => {
+  b.onclick = () => swPct(Number(b.dataset.pct));
+});
+$("swFrom").onchange = () => {
+  $("swTo").value = $("swFrom").value === "DAI" ? "AiLGNS" : "DAI";
+  loadSwapBalances();
+  updateSwapQuote();
+};
+$("swTo").onchange = () => {
+  $("swFrom").value = $("swTo").value === "DAI" ? "AiLGNS" : "DAI";
+  loadSwapBalances();
+  updateSwapQuote();
+};
+$("swIn").addEventListener("input", () => {
+  clearTimeout(swTimer);
+  swTimer = setTimeout(updateSwapQuote, 500);
+});
+$("swSlip").addEventListener("input", () => {
+  clearTimeout(swTimer);
+  swTimer = setTimeout(updateSwapQuote, 500);
+});
+$("swApprove").onclick = swApprove;
+$("swSwap").onclick = swSwap;
+
+/* 算力 */
+document.querySelectorAll("[data-ppct]").forEach((b) => {
+  b.onclick = () => pwPct(Number(b.dataset.ppct));
+});
+document.querySelectorAll(".pmode").forEach((b) => {
+  b.onclick = () => {
+    pwMode = b.dataset.mode;
+    document.querySelectorAll(".pmode").forEach((x) => x.classList.toggle("active", x === b));
+    updatePowerUI();
+  };
+});
+$("pwAmt").addEventListener("input", updatePowerUI);
+$("pwApprove").onclick = pwApprove;
+$("pwGo").onclick = pwGo;
+
+/* 社區 */
+$("cmRefresh").onclick = loadCommunityData;
+$("cmCopy").onclick = async () => {
+  const v = $("cmLink").value;
+  if (!v) return;
+  try {
+    await navigator.clipboard.writeText(v);
+    toast("已複製推薦連結");
+  } catch {
+    toast(v, 8000);
+  }
+};
+$("btnCopy").onclick = async () => {
+  if (!multisig) return;
+  try {
+    await navigator.clipboard.writeText(multisig);
+    toast("已复制多签地址");
+  } catch {
+    toast(multisig, 8000);
+  }
+};
+
+$("multisig").value = localStorage.getItem("anubis.multisig") || "";
+
+// 支持 ?ms=0x... 直接打开某个多签（方便分享链接与截图核对）
+try {
+  const deep = new URLSearchParams(location.search).get("ms");
+  if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
+} catch {}
+
+renderHelix();
+if ($("multisig").value) load();
+
+if (window.ethereum) {
+  window.ethereum.on?.("accountsChanged", () => location.reload());
+  window.ethereum.on?.("chainChanged", () => location.reload());
+}
+
+</script>
+</body>
+</html>
