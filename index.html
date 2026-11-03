@@ -766,6 +766,20 @@ async function submitTx() {
     toast("请先在上方「多签地址」填入地址并点「载入」");
     return;
   }
+
+  // 防错：如果地址其实是 Safe，不能用自建多签的提交按钮
+  try {
+    const realKind = await detectKind(multisig, new ethers.JsonRpcProvider(RPC));
+    if (realKind === "safe") {
+      safeMode = true;
+      setPanelsForKind("safe");
+      $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
+      toast("这是 Safe 多签，不能用「提交」按钮；请用上方 Safe 操作区：计算哈希 → 批准 → 执行", 10000);
+      logError("提交交易", new Error("地址是 Safe，已自动切换到 Safe 模式，请重新操作"));
+      return;
+    }
+  } catch {}
+
   if (!(await precheck())) return;
   const c = (await ensureWriter()) || rw;
   if (!c) {
@@ -2225,23 +2239,4 @@ $("btnCopy").onclick = async () => {
   }
 };
 
-$("multisig").value = localStorage.getItem("anubis.multisig") || "";
-
-// 支持 ?ms=0x... 直接打开某个多签（方便分享链接与截图核对）
-try {
-  const deep = new URLSearchParams(location.search).get("ms");
-  if (deep && ethers.isAddress(deep)) $("multisig").value = ethers.getAddress(deep);
-} catch {}
-
-renderHelix();
-if ($("multisig").value) load();
-
-if (window.ethereum) {
-  window.ethereum.on?.("accountsChanged", () => location.reload());
-  window.ethereum.on?.("chainChanged", () => location.reload());
-}
-
-
-</script>
-</body>
-</html>
+$("multisig").value = localStorage.getItem("
