@@ -592,6 +592,7 @@ async function load() {
 
   // 自动识别合约类型：Safe（guardsafe）还是本项目的 AnubisMultiSig
   const kind = await detectKind(multisig, readProvider);
+  currentKind = kind;
   setPanelsForKind(kind);
   await updateDiag(kind, readProvider);
   if (kind === "safe") {
@@ -1389,13 +1390,17 @@ const fmt4 = (v) =>
   Number(ethers.formatUnits(v, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 function fillTx(target, data, label) {
-  if (safeMode) {
+  // 以「当前地址的真实类型」为准，避免状态错位
+  if (currentKind === "safe" || safeMode) {
+    safeMode = true;
     $("sfTo").value = target;
     $("sfValue").value = "0";
     $("sfData").value = data;
+    $("newSection").style.display = "none";
     toast("已填入 Safe 表单：" + label + "，正在计算哈希…");
     $("safeSection").scrollIntoView({ behavior: "smooth", block: "start" });
-    setTimeout(() => safeComputeHash(), 350);
+    // 自动算哈希，算完直接请求钱包批准
+    setTimeout(() => safeComputeHash(true), 350);
     return;
   }
   $("to").value = target;
@@ -1805,6 +1810,7 @@ const SAFE_ABI = [
 ];
 
 let safeMode = false;
+let currentKind = "custom";
 let safeTx = null; // { hash, to, value, data, nonce }
 let safeOwners = [];
 let safeThreshold = 0n;
@@ -1960,7 +1966,7 @@ async function loadSafeData(rp) {
   }
 }
 
-async function safeComputeHash() {
+async function safeComputeHash(autoApprove) {
   if (!ethers.isAddress(($("sfTo").value || "").trim())) {
     toast("目标地址不正确");
     return;
@@ -1997,6 +2003,16 @@ async function safeComputeHash() {
     $("sfHashOut").textContent = "交易哈希：" + hash;
     $("sfApprove").disabled = false;
     await refreshSafeApprovals();
+
+    if (autoApprove) {
+      const mine = account ? await read.approvedHashes(account, hash).catch(() => 0n) : 0n;
+      if (mine === 0n) {
+        toast("哈希已生成，请在钱包中确认「批准」…", 8000);
+        await safeApprove();
+      } else {
+        toast("你已经批准过这笔交易");
+      }
+    }
   } catch (err) {
     toast("计算失败：" + (err.shortMessage || err.message), 6000); logError("计算哈希", err);
   }
@@ -2020,6 +2036,7 @@ async function refreshSafeApprovals() {
   }
   $("sfApprovals").innerHTML = `已批准 ${approved} / ${safeThreshold}：<br>` + rows.join("<br>");
   $("sfExec").disabled = approved < Number(safeThreshold);
+  return approved;
 }
 
 async function safeApprove() {
@@ -2034,7 +2051,11 @@ async function safeApprove() {
     const tx = await write.approveHash(safeTx.hash);
     await tx.wait();
     toast("已批准");
-    await refreshSafeApprovals();
+    const approved = await refreshSafeApprovals();
+    if (approved >= Number(safeThreshold)) {
+      toast("已达阈值，正在自动执行…", 8000);
+      await safeExec();
+    }
   } catch (err) {
     toast("批准失败：" + (err.shortMessage || err.message), 6000); logError("批准", err);
   }
