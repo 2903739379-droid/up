@@ -482,7 +482,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v18 · 2026-11-04 06:52";
+const BUILD = "v19 · 2026-11-04 06:57";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -625,11 +625,21 @@ async function switchChain() {
 }
 
 async function load() {
-  const input = ($("multisig").value || storageGet("anubis.multisig") || "").trim();
+  const input = ($("multisig").value || storageGet("anubis.multisig") || "")
+    .trim()
+    .replace(/\s+/g, "");
   if (!ethers.isAddress(input)) {
-    if (input) toast("多签地址格式不正确");
+    if (input) {
+      const msg =
+        `地址格式不正确：需要 0x + 40 位十六进制，共 42 位；当前 ${input.length} 位。` +
+        "请复制完整的多签地址。";
+      toast(msg);
+      $("diag").textContent = msg;
+      $("diag").style.color = "#dc2626";
+    }
     return;
   }
+  $("diag").style.color = "";
   multisig = ethers.getAddress(input);
   storageSet("anubis.multisig", multisig);
   $("multisig").value = multisig;
