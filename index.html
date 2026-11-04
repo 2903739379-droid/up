@@ -644,7 +644,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v26 · 2026-11-04 16:41";
+const BUILD = "v27 · 2026-11-04 17:03";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2624,7 +2624,36 @@ async function loadPending() {
           : `待办读取失败（${res.status}）`;
       return;
     }
-    pendingItems = Array.isArray(data.items) ? data.items : [];
+    let items = Array.isArray(data.items) ? data.items : [];
+
+    // 已执行/已过期的交易：nonce 小于链上当前 nonce，直接从共享列表移除
+    if (safeMode) {
+      try {
+        const rp = new ethers.JsonRpcProvider(RPC);
+        const read = new ethers.Contract(
+          multisig,
+          ["function nonce() view returns (uint256)"],
+          rp
+        );
+        const current = Number(await read.nonce());
+        const stale = items.filter(
+          (it) => typeof it.nonce === "number" && it.nonce < current
+        );
+        if (stale.length) {
+          items = items.filter(
+            (it) => !(typeof it.nonce === "number" && it.nonce < current)
+          );
+          stale.forEach((it) => {
+            fetch(
+              `${API_BASE}/api/pending?multisig=${multisig}&hash=${it.hash}`,
+              { method: "DELETE" }
+            ).catch(() => {});
+          });
+        }
+      } catch {}
+    }
+
+    pendingItems = items;
     renderPending();
     const badge = $("approveCount");
     if (badge) {
@@ -2650,9 +2679,10 @@ function renderPending() {
     const card = document.createElement("div");
     card.className = "tx";
     const time = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+    const nonceText = typeof item.nonce === "number" ? ` · Nonce ${item.nonce}` : "";
     const dataShort = item.data && item.data.length > 42 ? `${item.data.slice(0, 42)}…` : item.data || "0x";
     card.innerHTML =
-      `<div><b>${escapeHtml(item.label || "Safe 交易")}</b> <span class="small">${escapeHtml(time)}</span></div>` +
+      `<div><b>${escapeHtml(item.label || "Safe 交易")}</b> <span class="small">${escapeHtml(nonceText + " " + time)}</span></div>` +
       `<div class="small" style="margin-top:4px">目标 ${escapeHtml(item.to)}<br>` +
       `金额 ${escapeHtml(item.value)} DAI<br>calldata ${escapeHtml(dataShort)}</div>`;
 
@@ -2706,6 +2736,7 @@ async function publishPending(label) {
         value: String($("sfValue").value || "0"),
         data: safeTx.data,
         hash: safeTx.hash,
+        nonce: Number(safeTx.nonce),
         label: label || pendingLabel || "Safe 交易",
         shareUrl: $("sfLink").value,
         createdBy: account || "",
@@ -2718,12 +2749,41 @@ async function publishPending(label) {
 async function removePendingItem(hash) {
   if (!API_BASE || !multisig || !hash) return;
   try {
-    await fetch(
+    const res = await fetch(
       `${API_BASE}/api/pending?multisig=${multisig}&hash=${hash}`,
       { method: "DELETE" }
     );
-  } catch {}
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      toast("移除失败：" + ((data && data.error) || res.status), 6000);
+    }
+  } catch (err) {
+    toast("移除失败：" + (err.message || err), 6000);
+  }
   loadPending();
+}
+
+/** 执行后清理：同一 nonce 的待办都已失效（旧数据没有 nonce 字段，也一并清掉） */
+async function removeStaleForNonce(nonce) {
+  if (!API_BASE || !multisig) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/pending?multisig=${multisig}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const targets = items.filter(
+      (it) => typeof it.nonce !== "number" || it.nonce === Number(nonce)
+    );
+    await Promise.all(
+      targets.map((it) =>
+        fetch(
+          `${API_BASE}/api/pending?multisig=${multisig}&hash=${it.hash}`,
+          { method: "DELETE" }
+        ).catch(() => {})
+      )
+    );
+  } catch {}
 }
 
 /** 把这笔 Safe 交易编码进链接：其他所有者打开后看到同一笔交易和链上批准 */
@@ -2874,9 +2934,11 @@ async function safeExec() {
       signatures    // signatures
     );
     const executedHash = safeTx.hash;
+    const executedNonce = safeTx.nonce;
     await tx.wait();
     storageSet("anubis.safeDraft", "");
     await removePendingItem(executedHash);
+    await removeStaleForNonce(executedNonce);
     if (cancelTargetHash) {
       await removePendingItem(cancelTargetHash);
       cancelTargetHash = null;
@@ -3051,6 +3113,20 @@ document.addEventListener("keydown", (e) => {
 const initialView = location.hash.replace("#", "");
 showView(VIEW_NAMES.includes(initialView) ? initialView : "asset", false);
 refreshAllowed();
+
+/* 待办自动刷新：有人执行或移除后，其他所有者的页面 20 秒内同步 */
+setInterval(() => {
+  if (!multisig || !safeMode || document.visibilityState !== "visible") return;
+  loadPending();
+  if (safeTx && $("view-approve").classList.contains("active")) {
+    refreshSignatureStatus();
+  }
+}, 20000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && multisig && safeMode) {
+    loadPending();
+  }
+});
 
 /* 兌換 */
 document.querySelectorAll("[data-pct]").forEach((b) => {
