@@ -172,6 +172,7 @@
       <div class="small" id="diag" style="margin-top:10px">—</div>
       <div class="small" id="multisigInfo" style="margin-top:8px"></div>
       <div class="warn" id="diagWarn" style="margin-top:8px;display:none"></div>
+      <div class="warn" id="allowedWarn" style="margin-top:8px;display:none">该多签地址未获本站授权，功能已锁定。</div>
 
       <details class="adv">
         <summary>高级 / 诊断</summary>
@@ -182,6 +183,20 @@
         </div>
         <button class="ghost" id="btnSelfCheck" style="width:100%;margin-top:8px;font-size:12px;padding:8px">运行自检</button>
         <div class="small" id="errLog" style="margin-top:8px;color:#991b1b;white-space:pre-wrap"></div>
+
+        <div style="border-top:1px dashed var(--hx-line);margin-top:12px;padding-top:10px">
+          <div class="small"><b>站点授权白名单</b>：只有列表里的多签能用本站</div>
+          <div class="small" id="allowedState" style="margin-top:6px">读取中…</div>
+          <label class="small" for="adminToken" style="margin-top:8px">管理员令牌</label>
+          <input id="adminToken" type="password" name="adminToken" placeholder="ADMIN_TOKEN…" autocomplete="off">
+          <label class="small" for="adminAddr" style="margin-top:8px">多签地址</label>
+          <input id="adminAddr" name="adminAddr" placeholder="0x…" autocomplete="off" spellcheck="false">
+          <div class="row" style="gap:6px;margin-top:8px">
+            <button class="ghost grow" id="adminAdd" style="font-size:12px;padding:8px">加入白名单</button>
+            <button class="ghost grow" id="adminRemove" style="font-size:12px;padding:8px">移出白名单</button>
+          </div>
+          <div class="small" id="adminMsg" style="margin-top:6px"></div>
+        </div>
       </details>
     </div>
   </section>
@@ -586,7 +601,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v23 · 2026-11-04 07:40";
+const BUILD = "v24 · 2026-11-04 12:13";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -745,6 +760,16 @@ async function load() {
   }
   $("diag").style.color = "";
   multisig = ethers.getAddress(input);
+
+  await refreshAllowed();
+  if (!isMultisigAllowed(multisig)) {
+    $("allowedWarn").style.display = "block";
+    $("diag").textContent = "该多签地址未获本站授权，功能已锁定。";
+    setPanelsForKind("none");
+    return;
+  }
+  $("allowedWarn").style.display = "none";
+  if ($("adminAddr")) $("adminAddr").value = multisig;
   storageSet("anubis.multisig", multisig);
   $("multisig").value = multisig;
 
@@ -2062,6 +2087,7 @@ const API_BASE =
 let pendingLabel = "";
 let pendingItems = [];
 let cancelTargetHash = null;
+let allowedList = null;
 
 async function detectKind(addr, rp) {
   const code = await rp.getCode(addr).catch(() => "0x");
@@ -2298,6 +2324,76 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** 站点授权白名单：为空时任何人可用，加入地址后只放行列表中的多签 */
+async function refreshAllowed() {
+  try {
+    const res = await fetch(`${API_BASE}/api/allowed`, { cache: "no-store" });
+    const data = await res.json();
+    allowedList = Array.isArray(data.items)
+      ? data.items.map((a) => String(a).toLowerCase())
+      : [];
+  } catch {
+    allowedList = null; // 中继不可达时不锁，服务器端仍会校验
+  }
+  renderAllowedState();
+}
+
+function isMultisigAllowed(addr) {
+  if (!addr) return false;
+  if (!allowedList || allowedList.length === 0) return true;
+  return allowedList.includes(String(addr).toLowerCase());
+}
+
+function renderAllowedState() {
+  const box = $("allowedState");
+  if (!box) return;
+  if (allowedList === null) {
+    box.textContent = "白名单读取失败（不锁定，仍受服务器端校验）";
+    return;
+  }
+  if (!allowedList.length) {
+    box.textContent = "白名单为空：当前任何人可用。请先加入你的多签地址。";
+    return;
+  }
+  box.innerHTML =
+    "已授权：" +
+    allowedList.map((a) => `<code>${a.slice(0, 6)}…${a.slice(-4)}</code>`).join("、");
+}
+
+async function adminUpdate(action) {
+  const token = $("adminToken").value.trim();
+  const address = $("adminAddr").value.trim();
+  const msg = $("adminMsg");
+  if (!token) {
+    msg.textContent = "请填写管理员令牌";
+    return;
+  }
+  if (!ethers.isAddress(address)) {
+    msg.textContent = "多签地址格式不正确";
+    return;
+  }
+  msg.textContent = "提交中…";
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/allowed`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-token": token },
+      body: JSON.stringify({ action, address }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      msg.textContent = (data && data.error) || `失败（${res.status}）`;
+      return;
+    }
+    msg.textContent = `已更新，白名单现有 ${(data.items || []).length} 个地址`;
+    await refreshAllowed();
+    if (multisig && isMultisigAllowed(multisig)) {
+      $("allowedWarn").style.display = "none";
+    }
+  } catch (err) {
+    msg.textContent = "请求失败：" + (err.message || err);
+  }
+}
+
 async function loadPending() {
   if (!API_BASE || !multisig) return;
   const wrap = $("sfPendingWrap");
@@ -2307,6 +2403,13 @@ async function loadPending() {
   try {
     const res = await fetch(`${API_BASE}/api/pending?multisig=${multisig}`, { cache: "no-store" });
     const data = await res.json();
+    if (!res.ok) {
+      box.textContent =
+        data && data.error === "multisig not allowed"
+          ? "该多签未获本站授权，无法读取待办"
+          : `待办读取失败（${res.status}）`;
+      return;
+    }
     pendingItems = Array.isArray(data.items) ? data.items : [];
     renderPending();
     const badge = $("approveCount");
@@ -2733,6 +2836,7 @@ document.addEventListener("keydown", (e) => {
 /* 支持直接带 #tx / #approve 打开 */
 const initialView = location.hash.replace("#", "");
 showView(VIEW_NAMES.includes(initialView) ? initialView : "asset", false);
+refreshAllowed();
 
 /* 兌換 */
 document.querySelectorAll("[data-pct]").forEach((b) => {
@@ -2909,6 +3013,8 @@ $("sfChainApprove").onclick = () =>
     action: safeApproveOnChain,
   });
 $("sfPendingRefresh").onclick = loadPending;
+$("adminAdd").onclick = () => adminUpdate("add");
+$("adminRemove").onclick = () => adminUpdate("remove");
 $("cmCopy").onclick = async () => {
   const v = $("cmLink").value;
   if (!v) return;
