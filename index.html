@@ -601,7 +601,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v24 · 2026-11-04 12:13";
+const BUILD = "v25 · 2026-11-04 12:25";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2080,10 +2080,9 @@ let forcedMode = "auto";
 
 /* 待批准交易中继（Cloudflare Worker）。
    页面由 Worker 自己托管时用同源地址，托管在 GitHub Pages 时用 Worker 域名。 */
+const PROD_PAGES = "https://anubis-panel-pages.pages.dev";
 const API_BASE =
-  location.hostname.endsWith(".workers.dev") || location.hostname.endsWith(".pages.dev")
-    ? location.origin
-    : "https://anubis-safe-relay.2903739379.workers.dev";
+  location.hostname === "anubis-panel-pages.pages.dev" ? location.origin : PROD_PAGES;
 let pendingLabel = "";
 let pendingItems = [];
 let cancelTargetHash = null;
@@ -2381,7 +2380,11 @@ async function adminUpdate(action) {
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
-      msg.textContent = (data && data.error) || `失败（${res.status}）`;
+      const base = (data && data.error) || `失败（${res.status}）`;
+      msg.textContent =
+        res.status === 503
+          ? base + "（请在 Pages 的 Production 环境添加 ADMIN_TOKEN 并重新部署）"
+          : base;
       return;
     }
     msg.textContent = `已更新，白名单现有 ${(data.items || []).length} 个地址`;
