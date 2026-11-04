@@ -313,34 +313,77 @@
   <!-- 社區 -->
   <div class="view" id="view-community">
     <section class="card" id="communityPage" style="display:none">
-      <strong style="font-size:20px">左螺旋 · 社區增長</strong>
-      <div class="small" style="margin-top:2px;letter-spacing:.14em;font-size:11px">PEOPLE POWER. PROTOCOL GROWTH.</div>
+      <div class="row between">
+        <div>
+          <strong style="font-size:20px">我的團隊</strong>
+          <div class="small" style="margin-top:2px">社區增長 · 邀請綁定 · 直屬線</div>
+        </div>
+        <button class="ghost" id="cmRefresh" style="padding:8px 14px;font-size:12px">刷新</button>
+      </div>
 
       <div style="background:linear-gradient(120deg,#2563EB 0%,#7C3AED 55%,#A855F7 100%);border-radius:22px;padding:20px;margin-top:14px;color:#fff">
-        <div style="font-size:13px;opacity:.9">我的社區</div>
-        <div style="font-size:44px;font-weight:800;line-height:1.05;margin-top:4px">
-          <span id="cmLevel">0</span>
-          <span style="font-size:15px;font-weight:600;opacity:.9">個算力節點</span>
+        <div class="row between" style="font-size:13px;opacity:.9">
+          <span>我的團隊</span>
+          <span id="cmDepthBadge">深度 —</span>
         </div>
-        <div style="margin-top:14px;font-size:12px;opacity:.85">推薦人：<span id="cmReferrer">—</span></div>
+        <div style="font-size:42px;font-weight:800;line-height:1.05;margin-top:4px">
+          <span id="cmTotal">0</span>
+          <span style="font-size:15px;font-weight:600;opacity:.9">位成員</span>
+        </div>
+        <div style="margin-top:12px;font-size:13px;opacity:.92">
+          直接 <b id="cmCount">0</b> · 間接 <b id="cmIndirect">0</b>
+        </div>
       </div>
 
       <div class="row" style="gap:12px;margin-top:14px">
-        <div style="flex:1"><div class="small">直接推薦</div><b id="cmCount">0</b><span class="small"> 人</span></div>
-        <div style="flex:1"><div class="small">團隊節點</div><b id="cmTeam">0</b></div>
+        <div style="flex:1">
+          <div class="small">團隊生效算力</div>
+          <b id="cmTeamPower">—</b>
+        </div>
+        <div style="flex:1">
+          <div class="small">樹狀層級深度</div>
+          <b id="cmLevel">—</b>
+        </div>
+      </div>
+      <div class="small" style="margin-top:10px">
+        目前推薦人：<span id="cmReferrer" style="word-break:break-all">—</span>
       </div>
 
-      <label for="cmLink" style="margin-top:14px">我的推薦連結</label>
+      <details class="adv" id="cmBindWrap" style="margin-top:14px">
+        <summary>推薦綁定 <span id="cmBindState" class="small">—</span></summary>
+        <div style="padding-top:10px">
+          <label class="small" for="cmRefAddr">推薦人地址</label>
+          <input id="cmRefAddr" name="referrer" placeholder="0x…" autocomplete="off" spellcheck="false">
+          <button id="cmBind" style="width:100%;margin-top:10px" disabled>綁定推薦人</button>
+          <div class="small" style="margin-top:6px">綁定後不可撤銷，請先核對地址。</div>
+        </div>
+      </details>
+
+      <div class="row between" style="margin-top:16px">
+        <strong style="font-size:14px">直屬線</strong>
+        <span class="small">按生效算力排序</span>
+      </div>
+      <div class="small" style="margin-top:2px">展示前 20 位直接推薦；尚無算力的成員也會列出。</div>
+      <div id="cmList" style="margin-top:10px">
+        <div class="small">讀取中…</div>
+      </div>
+
+      <button id="cmInvite" style="width:100%;margin-top:16px">邀請夥伴</button>
+      <label for="cmLink" style="margin-top:10px">我的推薦連結</label>
       <div class="row">
         <input id="cmLink" name="referralLink" class="grow" readonly style="font-size:12px">
         <button class="ghost" id="cmCopy" style="white-space:nowrap">複製</button>
       </div>
 
-      <div class="row between" style="margin-top:16px">
-        <strong style="font-size:14px">直接推薦名單</strong>
-        <button class="ghost" id="cmRefresh" style="padding:8px 14px;font-size:12px">刷新</button>
-      </div>
-      <div id="cmList" class="small" style="margin-top:8px">—</div>
+      <details class="adv" style="margin-top:14px">
+        <summary>統計口徑</summary>
+        <div class="small" style="padding-top:8px;line-height:1.7">
+          直接推薦 = 直接綁定在你名下的地址數；間接推薦 = 這些成員的下線總數。<br>
+          團隊生效算力 = 所有下線當前 activePowerOf 之和（最多統計 200 個地址，超出時顯示 ≥）。<br>
+          樹狀層級深度從協議根節點起算，根節點深度為 1；此深度與 P 等級分開顯示。
+        </div>
+      </details>
+      <div class="small" id="cmHint" style="margin-top:8px"></div>
     </section>
 
     <details class="adv" id="dataWrap" style="margin:0 4px 14px">
@@ -601,7 +644,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v25 · 2026-11-04 12:25";
+const BUILD = "v26 · 2026-11-04 16:41";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -2022,35 +2065,203 @@ const COM_ABI = [
   "function members(address) view returns (uint256 level, address referrer)",
   "function referrals(address,uint256,uint256) view returns (uint256,address[])",
 ];
+const POWER_VIEW_ABI = ["function activePowerOf(address) view returns (uint256)"];
+
+const cmShort = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
+
+async function cmRefs(c, addr) {
+  const total = Number((await c.referrals(addr, 0, 0))[0]);
+  if (!total) return { total: 0, list: [], capped: false };
+  const n = Math.min(total, 200);
+  const r = await c.referrals(addr, 0, n);
+  return { total, list: r[1].map((a) => a.toLowerCase()), capped: total > n };
+}
+
+async function cmCopyLink() {
+  const v = $("cmLink").value;
+  if (!v) return;
+  try {
+    await navigator.clipboard.writeText(v);
+    toast("已複製推薦連結");
+  } catch {
+    toast(v, 8000);
+  }
+}
+
+function cmBindReferrer() {
+  if (!multisig) {
+    toast("請先載入多簽地址");
+    return;
+  }
+  const v = $("cmRefAddr").value.trim();
+  if (!ethers.isAddress(v)) {
+    toast("推薦人地址格式不正確");
+    return;
+  }
+  if (v.toLowerCase() === multisig.toLowerCase()) {
+    toast("不能綁定自己");
+    return;
+  }
+  if (!confirm(`綁定推薦人 ${v}？\n綁定後不可撤銷，請確認地址無誤。`)) return;
+  const iface = new ethers.Interface(["function join(address)"]);
+  fillTx(HELIX.community, iface.encodeFunctionData("join", [v]), "綁定推薦人");
+}
+
+function cmRenderList(rows, capped) {
+  const box = $("cmList");
+  box.innerHTML = "";
+  if (!rows.length) {
+    box.innerHTML =
+      '<div class="small" style="text-align:center;padding:18px 0">' +
+      '<b style="display:block;color:#374151;font-size:14px">尚無直接推薦成員</b>' +
+      "有成員綁定後，可在這裡查看地址與生效算力。</div>";
+    return;
+  }
+  const top = rows.slice(0, 20);
+  top.forEach(({ a, p }, i) => {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--hx-line)";
+    if (i === 0) row.style.borderTop = "none";
+
+    const idx = document.createElement("span");
+    idx.className = "small";
+    idx.style.cssText = "width:18px;color:#9CA3AF";
+    idx.textContent = String(i + 1);
+
+    const addr = document.createElement("button");
+    addr.className = "ghost";
+    addr.style.cssText =
+      "flex:1;text-align:left;padding:0;background:none;box-shadow:none;font-size:13px";
+    addr.textContent = cmShort(a);
+    addr.title = a;
+    addr.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(a);
+        toast("已複製地址");
+      } catch {}
+    };
+
+    const val = document.createElement("b");
+    val.style.cssText = "font-size:13px;white-space:nowrap";
+    val.textContent = fmt4(p) + " DAI";
+
+    row.append(idx, addr, val);
+    box.appendChild(row);
+  });
+  if (rows.length > 20 || capped) {
+    const more = document.createElement("div");
+    more.className = "small";
+    more.style.marginTop = "8px";
+    more.textContent = capped
+      ? "數據較多，僅展示前 20 位；團隊統計上限 200 個地址。"
+      : `僅展示前 20 位，共 ${rows.length} 位。`;
+    box.appendChild(more);
+  }
+}
 
 async function loadCommunityData() {
   if (!multisig) return;
+  const hint = $("cmHint");
+  if (hint) hint.textContent = "讀取中…";
+  $("cmList").innerHTML = '<div class="small">讀取中…</div>';
+
   const rp = new ethers.JsonRpcProvider(RPC);
   const c = new ethers.Contract(HELIX.community, COM_ABI, rp);
+  const power = new ethers.Contract(HELIX.power, POWER_VIEW_ABI, rp);
+  const root = multisig.toLowerCase();
 
   $("cmLink").value = `https://awakehelix.io/power#/community?ref=${multisig}`;
 
   try {
     const m = await c.members(multisig);
-    $("cmLevel").textContent = m.level.toString();
-    $("cmTeam").textContent = m.level.toString();
+    const depth = Number(m.level);
     const ref = m.referrer;
-    $("cmReferrer").textContent = !ref || ref === ZERO ? "—" : ref;
-  } catch {
-    $("cmLevel").textContent = "—";
-  }
+    const bound = !!ref && ref !== ZERO;
 
-  try {
-    const r = await c.referrals(multisig, 0, 50);
-    const total = r[0];
-    const list = r[1];
-    $("cmCount").textContent = total.toString();
-    $("cmList").innerHTML = list.length
-      ? list.map((a, i) => `${i + 1}. ${a}`).join("<br>")
-      : "还没有推荐";
-  } catch {
-    $("cmCount").textContent = "0";
-    $("cmList").textContent = "还没有推荐";
+    $("cmLevel").textContent = depth > 0 ? String(depth) : "—";
+    $("cmDepthBadge").textContent = depth > 0 ? `深度 ${depth}` : "深度 —";
+    $("cmReferrer").textContent = bound ? cmShort(ref) : "—";
+    $("cmReferrer").title = bound ? ref : "";
+    $("cmBindState").textContent = bound ? "已綁定" : "未綁定";
+    $("cmRefAddr").value = bound ? ref : "";
+    $("cmRefAddr").disabled = bound;
+    $("cmBind").disabled = bound;
+    $("cmBind").textContent = bound ? "已綁定" : "綁定推薦人";
+
+    const direct = await cmRefs(c, root);
+    $("cmCount").textContent = String(direct.total);
+
+    let indirect = 0;
+    let capped = direct.capped;
+    const seen = new Set([root, ...direct.list]);
+    let frontier = direct.list.slice();
+
+    for (let level = 0; level < 20 && frontier.length; level++) {
+      if (frontier.length > 50) {
+        frontier = frontier.slice(0, 50);
+        capped = true;
+      }
+      const next = [];
+      for (let i = 0; i < frontier.length; i += 10) {
+        const chunk = frontier.slice(i, i + 10);
+        const results = await Promise.all(
+          chunk.map((a) => cmRefs(c, a).catch(() => ({ total: 0, list: [], capped: false })))
+        );
+        for (const r of results) {
+          indirect += r.total;
+          if (r.capped) capped = true;
+          for (const x of r.list) {
+            if (!seen.has(x)) {
+              seen.add(x);
+              next.push(x);
+            }
+          }
+          if (seen.size > 200) {
+            capped = true;
+            break;
+          }
+        }
+        if (seen.size > 200) break;
+      }
+      frontier = next;
+      if (seen.size > 200) break;
+    }
+
+    const totalMembers = direct.total + indirect;
+    $("cmIndirect").textContent = String(indirect);
+    $("cmTotal").textContent = (capped ? "≥" : "") + String(totalMembers);
+
+    const members = [...seen].filter((a) => a !== root).slice(0, 200);
+    let teamPower = 0n;
+    for (let i = 0; i < members.length; i += 10) {
+      const chunk = members.slice(i, i + 10);
+      const vals = await Promise.all(
+        chunk.map((a) => power.activePowerOf(a).catch(() => 0n))
+      );
+      for (const v of vals) teamPower += v;
+    }
+    $("cmTeamPower").textContent = (capped ? "≥" : "") + fmt4(teamPower) + " DAI";
+
+    const directList = direct.list.slice(0, 50);
+    const powers = await Promise.all(
+      directList.map((a) => power.activePowerOf(a).catch(() => 0n))
+    );
+    const rows = directList
+      .map((a, i) => ({ a, p: powers[i] }))
+      .sort((x, y) => (y.p > x.p ? 1 : y.p < x.p ? -1 : 0));
+
+    cmRenderList(rows, direct.capped);
+    if (hint) {
+      hint.textContent = capped
+        ? "數據較多，僅統計前 200 個地址（顯示 ≥）。"
+        : `已統計 ${members.length} 個下線地址。`;
+    }
+  } catch (err) {
+    logError("社區", err);
+    if (hint) hint.textContent = "讀取失敗：" + (err.shortMessage || err.message || err);
+    $("cmList").innerHTML =
+      '<div class="small" style="color:#991b1b">讀取失敗，請稍後重試。</div>';
   }
 }
 
@@ -3018,16 +3229,9 @@ $("sfChainApprove").onclick = () =>
 $("sfPendingRefresh").onclick = loadPending;
 $("adminAdd").onclick = () => adminUpdate("add");
 $("adminRemove").onclick = () => adminUpdate("remove");
-$("cmCopy").onclick = async () => {
-  const v = $("cmLink").value;
-  if (!v) return;
-  try {
-    await navigator.clipboard.writeText(v);
-    toast("已複製推薦連結");
-  } catch {
-    toast(v, 8000);
-  }
-};
+$("cmCopy").onclick = cmCopyLink;
+$("cmInvite").onclick = cmCopyLink;
+$("cmBind").onclick = cmBindReferrer;
 $("btnCopy").onclick = async () => {
   if (!multisig) return;
   try {
