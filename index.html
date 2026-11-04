@@ -85,6 +85,14 @@
   .hx-group>h4{border-left:0;padding-left:0;font-size:14px;color:#4C1D95;font-weight:800}
   .hx-title{font-size:14px;color:var(--hx-ink)}
   .hx button{margin-top:10px;padding:10px;font-size:13px;border-radius:12px}
+  .hx-section{border:1px solid var(--hx-line);border-radius:18px;background:#fff;margin-bottom:12px;padding:0 14px}
+  .hx-section>summary{display:flex;justify-content:space-between;align-items:center;padding:14px 0;font-size:15px;font-weight:800;color:var(--hx-ink);cursor:pointer;list-style:none}
+  .hx-section>summary::-webkit-details-marker{display:none}
+  .hx-section>summary .hx-caret{font-size:12px;font-weight:700;color:#8B5CF6}
+  .hx-section[open]>summary .hx-caret::before{content:"收起"}
+  .hx-section:not([open])>summary .hx-caret::before{content:"展开"}
+  .hx-section>.hx{margin:0 0 12px}
+  .hx-section>.hx:last-child{margin-bottom:14px}
   .mode-btn{background:#fff;border:2px solid #EDE9FE;color:#4C1D95;border-radius:18px;box-shadow:none;font-weight:700}
   #assetRemain{font-size:40px;letter-spacing:-.03em;color:var(--hx-ink)}
   #assetSection hr{border-top:1px solid var(--hx-line)!important;margin:18px 0!important}
@@ -401,8 +409,8 @@
   <!-- 渦輪 -->
   <div class="view" id="view-helix">
     <section class="card" id="helixSection" style="display:none">
-      <strong style="font-size:20px">渦輪</strong>
-      <div class="small" style="margin-top:4px">veAiLGNS 與社區操作。点「生成」会跳到「交易」页并填好参数。</div>
+      <strong style="font-size:20px">渦輪與治理</strong>
+      <div class="small" style="margin-top:4px">按官方 DApp 分組：Turbine 渦輪、veAiLGNS 治理。點按鈕會把交易填入「交易」頁，核對後再批准。</div>
       <div id="helixList" style="margin-top:12px"></div>
     </section>
   </div>
@@ -644,7 +652,7 @@ function storageSet(key, value) {
 }
 
 /* 构建版本号：用来确认你打开的是不是最新页面 */
-const BUILD = "v27 · 2026-11-04 17:03";
+const BUILD = "v28 · 2026-11-04 17:21";
 
 /* 常驻错误日志：任何失败都留在页面上，不再一闪而过 */
 const errLines = [];
@@ -1257,7 +1265,7 @@ const PRESETS = [
     ],
   },
   {
-    group: "veAiLGNS",
+    group: "veAiLGNS 治理",
     items: [
       {
         title: "授权 AiLGNS 给 veAiLGNS",
@@ -1438,7 +1446,20 @@ const SUPERSEDED_GROUPS = new Set([
   "算力 Power",
   "Swap（HelixRouter）",
   "生产权 NFT（铸造在工厂合约）",
+  "社区增长",
 ]);
+
+function presetAction(item) {
+  const t = item.title || "";
+  if (t.startsWith("解除授权")) return "准备解除授权";
+  if (t.startsWith("授权")) return "准备授权";
+  if (t.includes("领取") || t.includes("领回")) return "准备领取";
+  if (t.includes("锁仓")) return "准备锁仓";
+  if (t.includes("激活") || t.includes("参与")) return "准备激活";
+  if (t.includes("销毁")) return "准备销毁";
+  if (t.includes("兑换")) return "准备兑换";
+  return "准备交易";
+}
 
 function renderHelix() {
   const root = $("helixList");
@@ -1447,11 +1468,17 @@ function renderHelix() {
 
   for (const group of PRESETS) {
     if (SUPERSEDED_GROUPS.has(group.group)) continue;
-    const gd = document.createElement("div");
-    gd.className = "hx-group";
-    const h = document.createElement("h4");
-    h.textContent = group.group;
-    gd.appendChild(h);
+    const sec = document.createElement("details");
+    sec.className = "hx-section";
+    if (group.group.startsWith("涡轮")) sec.open = true;
+
+    const sum = document.createElement("summary");
+    const name = document.createElement("span");
+    name.textContent = group.group;
+    const caret = document.createElement("span");
+    caret.className = "hx-caret";
+    sum.append(name, caret);
+    sec.appendChild(sum);
 
     for (const item of group.items) {
       const box = document.createElement("div");
@@ -1468,7 +1495,7 @@ function renderHelix() {
         note.style.fontFamily = "inherit";
         note.textContent = item.note;
         box.appendChild(note);
-        gd.appendChild(box);
+        sec.appendChild(box);
         continue;
       }
 
@@ -1507,7 +1534,8 @@ function renderHelix() {
       box.appendChild(grid);
 
       const btn = document.createElement("button");
-      btn.textContent = "生成并填入下方";
+      btn.textContent = presetAction(item);
+      btn.title = "填入交易页，核对后批准";
       btn.onclick = async () => {
         try {
           await fillFromPreset(item, inputs);
@@ -1516,9 +1544,9 @@ function renderHelix() {
         }
       };
       box.appendChild(btn);
-      gd.appendChild(box);
+      sec.appendChild(box);
     }
-    root.appendChild(gd);
+    root.appendChild(sec);
   }
 }
 
